@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gestão Inteligente de OS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--tx:#1b2430;--mut:#6b7785;--pri:#0b5fff;--bd:#dde3ea;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#11161c;--card:#1a212a;--tx:#e8edf2;--mut:#93a0ae;--pri:#4d8dff;--bd:#2b3541}}
+:root[data-theme="dark"]{--bg:#11161c;--card:#1a212a;--tx:#e8edf2;--mut:#93a0ae;--pri:#4d8dff;--bd:#2b3541}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:70px}
+header{padding:14px 16px;font-weight:700;font-size:17px}
+header small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+main{max-width:720px;margin:0 auto;padding:0 12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+button{font:inherit;border:0;border-radius:10px;padding:12px 14px;background:var(--pri);color:#fff;font-weight:600;width:100%;margin-top:8px}
+button.sec{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+button.del{background:#c62828}
+button:disabled{opacity:.5}
+label{display:block;font-size:12px;color:var(--mut);margin-top:10px}
+input,textarea{width:100%;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+textarea{min-height:70px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav a{flex:1;text-align:center;padding:10px 0;font-size:11px;color:var(--mut)}
+nav a.on{color:var(--pri);font-weight:700}
+nav a b{display:block;font-size:20px}
+img.prev{width:100%;border-radius:10px;margin-top:8px}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;text-align:center}
+.kpi b{display:block;font-size:26px;color:var(--pri)}
+.row{border-bottom:1px solid var(--bd);padding:10px 0}
+.row:last-child{border:0}
+.mut{color:var(--mut);font-size:13px}
+pre{white-space:pre-wrap;font:inherit;margin:8px 0 0}
+.low{border-color:#e6a100;background:rgba(230,161,0,.12)}
+</style>
+</head>
+<body>
+<header>🛠️ Cadastro de Ordem de Serviço<small>Foto → Leitura automática → Conferência → Excel</small></header>
+<main id="app"></main>
+<nav id="nav"></nav>
+
+<script>
+const CAMPOS=[["numero_os","Número da Ordem"],["equipamento","Equipamento"],["servico_solicitado","Serviço solicitado"],["executante","Executante"],["tipo_manutencao","Tipo de manutenção"],["observacoes","Observação"]];
+const LONG=["servico_solicitado","observacoes"];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let tab="nova", rec=[], draft=null, photo=null, msg="", busy=false, ia=false, caps=null;
+
+// ---- armazenamento (registros em localStorage, fotos em IndexedDB) ----
+try{rec=JSON.parse(localStorage.getItem("os_regs")||"[]")}catch(e){rec=[]}
+const salvarRegs=()=>{try{localStorage.setItem("os_regs",JSON.stringify(rec))}catch(e){msg="Falha ao salvar localmente."}};
+let db=null;
+const dbReady=new Promise(r=>{try{const q=indexedDB.open("os_fotos",1);q.onupgradeneeded=()=>q.result.createObjectStore("f");q.onsuccess=()=>{db=q.result;r()};q.onerror=()=>r()}catch(e){r()}});
+const fotoPut=async(id,b)=>{await dbReady;if(!db)return;return new Promise(r=>{try{const t=db.transaction("f","readwrite");t.objectStore("f").put(b,id);t.oncomplete=r;t.onerror=r}catch(e){r()}})};
+const fotoGet=async id=>{await dbReady;if(!db)return null;return new Promise(r=>{try{const q=db.transaction("f").objectStore("f").get(id);q.onsuccess=()=>r(q.result||null);q.onerror=()=>r(null)}catch(e){r(null)}})};
+const fotoDel=async id=>{await dbReady;if(!db)return;try{db.transaction("f","readwrite").objectStore("f").delete(id)}catch(e){}};
+
+// ---- IA (Google Gemini, chave guardada só neste aparelho) ----
+const MODEL="gemini-2.5-flash";
+const getKey=()=>{try{return localStorage.getItem("gem_key")||""}catch(e){return ""}};
+function configurarChave(){const k=prompt("Cole sua chave da API do Google AI Studio (fica só neste aparelho):",getKey());if(k!==null){try{localStorage.setItem("gem_key",k.trim())}catch(e){}ia=!!k.trim();render()}}
+async function gem(parts,json){
+  const key=getKey();
+  if(!key)throw new Error("Chave da API não configurada");
+
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json","x-goog-api-key":key},
+    body:JSON.stringify({
+      contents:[{parts}],
+      generationConfig:json
+        ? {responseMimeType:"application/json",temperature:0}
+        : {temperature:.2}
+    })
+  });
+
+  let j={};
+  try{j=await r.json()}catch(e){}
+  if(!r.ok){
+    const detalhe=j?.error?.message||("HTTP "+r.status);
+    throw new Error(detalhe);
+  }
+
+  const texto=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("");
+  if(!texto)throw new Error("A IA não retornou texto.");
+  return texto;
+}
+ia=!!getKey();
+const b64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result.split(",")[1]);f.readAsDataURL(b)});
+
+function reduzir(file,max=1600){return new Promise((res,rej)=>{const img=new Image(),u=URL.createObjectURL(file);img.onload=()=>{const k=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=img.width*k;c.height=img.height*k;c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(b=>b?res(b):rej(),"image/jpeg",.8)};img.onerror=rej;img.src=u})}
+
+async function processar(){
+  if(busy)return;
+  if(!photo){msg="📷 Primeiro tire ou selecione uma foto da Ordem de Serviço.";render();return}
+  if(!ia){msg="🔑 Configure a chave da API antes de processar a foto.";render();return}
+
+  busy=true;
+  msg="🤖 Lendo a Ordem de Serviço... não feche esta página.";
+  render();
+
+  const prompt=`Você lê fotos de Ordens de Serviço de manutenção/usinagem em português do Brasil.
+Extraia SOMENTE o que estiver legível na imagem.
+Se um campo não aparecer ou estiver ilegível, use "".
+NÃO invente, NÃO deduza e NÃO complete informações.
+A imagem normalmente contém uma Ordem de Serviço impressa.
+
+Campos:
+- numero_os = número da ordem de serviço
+- equipamento = equipamento
+- servico_solicitado = texto de "Serviço Solicitado"
+- executante = nome no campo "Executante", se preenchido
+- tipo_manutencao = tipo de manutenção, se estiver indicado
+- observacoes = texto do campo "Observações"
+
+Responda SOMENTE com JSON válido neste formato:
+{"numero_os":"","equipamento":"","servico_solicitado":"","executante":"","tipo_manutencao":"","observacoes":"","incertos":[]}
+
+Em "incertos", coloque os nomes dos campos cuja leitura ficou duvidosa.`;
+
+  try{
+    const t=await gem([
+      {text:prompt},
+      {inline_data:{mime_type:"image/jpeg",data:await b64(photo.blob)}}
+    ],true);
+
+    const limpo=t.replace(/```json/gi,"").replace(/```/g,"").trim();
+    const dados=JSON.parse(limpo);
+    draft={...dados,incertos:Array.isArray(dados.incertos)?dados.incertos:[]};
+    msg="✅ Leitura concluída. Confira os campos e confirme o cadastro.";
+  }catch(e){
+    console.error(e);
+    draft={...(draft||{}),incertos:[]};
+    msg="❌ Não foi possível processar a foto: "+(e.message||"erro desconhecido")+". Os campos continuam disponíveis para preenchimento manual.";
+  }
+
+  busy=false;
+  render();
+}
+
+async function salvar(){
+  const o={id:"os_"+Date.now(),criado:new Date().toISOString()};
+  CAMPOS.forEach(([k])=>{const v=$("#f_"+k).value.trim();o[k]=v||""});
+  if(!o.numero_os&&!o.equipamento){msg="Informe ao menos o número da ordem ou o equipamento.";render();return}
+  if(photo)await fotoPut(o.id,photo.blob);
+  o.foto=!!photo;rec.unshift(o);salvarRegs();draft=null;photo=null;msg="✅ OS salva no histórico.";tab="hist";render();
+}
+
+async function exportar(){
+  if(!rec.length){msg="Nada para exportar.";render();return}
+  const ws=XLSX.utils.json_to_sheet(rec.map(r=>{const x={};CAMPOS.forEach(([k,l])=>x[l]=r[k]||"");x["Registrado em"]=r.criado;return x}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"OS");
+    XLSX.writeFile(wb,"historico_os.xlsx");
+}
+
+async function perguntar(){
+  const q=$("#q").value.trim();if(!q||!ia)return;busy=true;$("#resp")&&($("#resp").textContent="Analisando...");
+  const base=rec.map(({foto,id,criado,...r})=>r);
+  const p=`Você é assistente técnico de manutenção/usinagem. Use APENAS o histórico de OS abaixo (JSON). Não invente dados que não estejam nele.
+Responda somente com base no histórico de Ordens de Serviço. Quando a pergunta pedir comparação ou relação entre ordens, cite o Número da Ordem usado como evidência. Responda em português, de forma curta.
+
+HISTÓRICO:
+${JSON.stringify(base)}
+
+PERGUNTA: ${q}`;
+  try{ia_resp=await gem([{text:p}],false)}catch(e){ia_resp="Erro ao consultar ("+(e.message||"falha")+")."}
+  busy=false;render();
+}
+let ia_resp="";
+
+// ---- telas ----
+function telaNova(){
+  const inc=draft?.incertos||[];
+  const dados=draft||{};
+  return `<div class="card">
+    <b>Nova Ordem de Serviço</b>
+    <div class="mut">${esc(msg||"Preencha manualmente ou tire uma foto para a IA preencher os campos.")}</div>
+
+    <input type="file" id="cam" accept="image/*" capture="environment" style="display:none">
+
+    <button type="button" onclick="$('#cam').click()">📷 TIRAR FOTO / ESCOLHER IMAGEM</button>
+    ${photo?`<img class="prev" src="${photo.url}" alt="Foto da ordem de serviço">`:""}
+
+    <button type="button" ${(!photo||busy||!ia)?"disabled":""} onclick="processar()">
+      ${busy?"⏳ PROCESSANDO...":"🤖 PROCESSAR FOTO"}
+    </button>
+
+    ${!ia?`<div class="mut" style="margin-top:10px">
+      ⚠️ Para o processamento automático funcionar, informe sua chave da API do Google Gemini abaixo.
+    </div>`:""}
+
+    <button type="button" class="sec" onclick="configurarChave()">🔑 ${ia?"Alterar chave da API":"Configurar chave da API"}</button>
+
+    <hr style="border:0;border-top:1px solid var(--bd);margin:16px 0">
+
+    <b>Cadastro da Ordem</b>
+    <div class="grid">
+      ${CAMPOS.map(([k,l])=>`
+        <div style="${LONG.includes(k)?"grid-column:1/-1":""}">
+          <label>${l}${inc.includes(k)?" ⚠️ conferir":""}</label>
+          ${LONG.includes(k)
+            ? `<textarea id="f_${k}" class="${inc.includes(k)?"low":""}" placeholder="${l}">${esc(dados[k]||"")}</textarea>`
+            : `<input id="f_${k}" class="${inc.includes(k)?"low":""}" value="${esc(dados[k]||"")}" placeholder="${l}">`
+          }
+        </div>`).join("")}
+    </div>
+
+    <button type="button" onclick="salvar()">✅ CONFIRMAR E SALVAR</button>
+    ${draft?`<button type="button" class="sec" onclick="draft=null;photo=null;msg='';render()">Limpar / Nova ordem</button>`:""}
+  </div>`;
+}
+function telaPesq(){
+  const t=($("#busca")?.value||window._b||"").toLowerCase();window._b=t;
+  const r=t?rec.filter(x=>JSON.stringify(x).toLowerCase().includes(t)):[];
+  return `<div class="card"><b>🔎 Pesquisa</b><input id="busca" placeholder="Ordem, equipamento, serviço, executante..." value="${esc(t)}" oninput="window._b=this.value;render(true)">
+  ${t?(r.length?r.map(linha).join(""):`<p class="mut">Nenhum resultado.</p>`):`<p class="mut">Digite para buscar no histórico.</p>`}</div>`;
+}
+function telaCompat(){
+  return `<div class="card"><b>⚙️ Compatibilidade</b>
+  <div class="mut">Pergunte em linguagem natural. A IA usa só o seu histórico (os dados são enviados à API do Google).</div>
+  ${ia?`<textarea id="q" placeholder="Ex.: Quais equipamentos tiveram manutenção?">${esc(window._q||"")}</textarea>
+  <button ${busy?"disabled":""} onclick="window._q=$('#q').value;perguntar()">Perguntar</button>
+  <pre id="resp">${esc(ia_resp)}</pre>`:`<p class="mut">Configure a chave da API na aba Nova OS.</p>`}</div>`;
+}
+function linha(r){return `<div class="row"><b>Ordem ${esc(r.numero_os||"s/n")}</b> · ${esc(r.equipamento||"—")}<div class="mut"><b>Serviço:</b> ${esc(r.servico_solicitado||"—")}</div><div class="mut"><b>Executante:</b> ${esc(r.executante||"—")} · <b>Manutenção:</b> ${esc(r.tipo_manutencao||"—")}</div><div class="mut"><b>Observação:</b> ${esc(r.observacoes||"—")}</div>${r.foto?`<button class="sec" style="width:auto;padding:6px 10px" onclick="ver('${r.id}')">📎 foto</button> `:""}<button class="sec del" style="width:auto;padding:6px 10px;background:none;color:#c62828;border-color:#c62828" onclick="apagar('${r.id}')">Excluir</button><div id="v_${r.id}"></div></div>`}
+function telaHist(){return `<div class="card"><b>📊 Histórico (${rec.length})</b><div class="mut">${esc(msg)}</div>${rec.map(linha).join("")||`<p class="mut">Nenhuma OS ainda.</p>`}<button onclick="exportar()">⬇️ Exportar Excel (.xlsx)</button></div>`}
+function telaDash(){
+  const uniq=k=>new Set(rec.map(r=>(r[k]||"").trim().toLowerCase()).filter(Boolean)).size;
+  const top=k=>{const m={};rec.forEach(r=>{const v=(r[k]||"").trim();if(v)m[v]=(m[v]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,5)};
+  const lista=(t,k)=>`<div class="card"><b>${t}</b>${top(k).map(([n,c])=>`<div class="row">${esc(n)} <span class="mut">× ${c}</span></div>`).join("")||`<p class="mut">—</p>`}</div>`;
+  return `<div class="kpis"><div class="kpi"><b>${rec.length}</b>Ordens</div><div class="kpi"><b>${uniq("equipamento")}</b>Equipamentos</div><div class="kpi"><b>${uniq("executante")}</b>Executantes</div><div class="kpi"><b>${uniq("tipo_manutencao")}</b>Tipos de manutenção</div></div><div style="height:12px"></div>${lista("Equipamentos mais frequentes","equipamento")}${lista("Tipos de manutenção","tipo_manutencao")}${lista("Executantes mais frequentes","executante")}`;
+}
+async function ver(id){const el=$("#v_"+id);if(el.innerHTML){el.innerHTML="";return}const b=await fotoGet(id);el.innerHTML=b?`<img class="prev" src="${URL.createObjectURL(b)}">`:`<div class="mut">Foto não encontrada.</div>`}
+async function apagar(id){if(!confirm("Excluir esta OS?"))return;rec=rec.filter(r=>r.id!==id);await fotoDel(id);salvarRegs();render()}
+
+const TABS=[["nova","📷","Nova OS"],["pesq","🔎","Pesquisa"],["compat","⚙️","Compat."],["hist","📊","Histórico"],["dash","📈","Dashboard"]];
+function render(keep){
+  const a=$("#app"),foc=document.activeElement?.id,pos=document.activeElement?.selectionStart;
+  a.innerHTML={nova:telaNova,pesq:telaPesq,compat:telaCompat,hist:telaHist,dash:telaDash}[tab]();
+  $("#nav").innerHTML=TABS.map(([k,i,l])=>`<a class="${k===tab?"on":""}" onclick="tab='${k}';msg='';render()"><b>${i}</b>${l}</a>`).join("");
+  const c=$("#cam");
+  if(c)c.onchange=async e=>{
+    const f=e.target.files?.[0];
+    if(!f)return;
+    try{
+      msg="📷 Preparando a foto...";
+      render();
+      const blob=await reduzir(f);
+      if(photo?.url)try{URL.revokeObjectURL(photo.url)}catch(x){}
+      photo={blob,url:URL.createObjectURL(blob)};
+      msg=ia?"✅ Foto pronta. Toque em PROCESSAR FOTO.":"📷 Foto pronta. Configure a chave da API para processar automaticamente.";
+      c.value="";
+      render();
+    }catch(x){
+      console.error(x);
+      msg="❌ Não consegui abrir essa imagem. Tente tirar a foto novamente.";
+      c.value="";
+      render();
+    }
+  };
+  if(keep&&foc){const e=document.getElementById(foc);if(e){e.focus();try{e.setSelectionRange(pos,pos)}catch(x){}}}
+}
+render();
+</script>
+</body>
+</html>
