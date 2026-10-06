@@ -564,5 +564,22 @@ function render(keep){
 render();
 aplicarTema(temaAtual());
 </script>
+  <form id="formOS">
+  <input type="text" id="cliente" placeholder="Nome do Cliente" required />
+  <textarea id="descricao" placeholder="Descrição da O.S."></textarea>
+  
+  <select id="status">
+    <option value="Pendente">Pendente</option>
+    <option value="Em Andamento">Em Andamento</option>
+    <option value="Concluído">Concluído</option>
+  </select>
+
+  <button type="submit">Cadastrar O.S.</button>
+</form>
+
+<!-- Garanta que o arquivo JS está vinculado no final do body -->
+<script src="script.js">
+  
+</script>
 </body>
 </html>
