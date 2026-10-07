@@ -1,45 +1,57 @@
-// URL base da sua API Python local
-const API_BASE_URL = 'http://127.0.0.1:8000';
+// Substitua pela URL exata gerada no painel do seu Render
+const API_URL = "https://seu-servico.onrender.com/api/registrar-os";
 
-document.addEventListener('DOMContentLoaded', () => {
-  const formOS = document.getElementById('formOS');
-  const inputImagem = document.getElementById('inputImagem'); // ID do seu input type="file"
+async function enviarFotosParaOS() {
+    const inputFiles = document.getElementById("inputFotos"); // Seu input tipo file
+    const inputObs = document.getElementById("inputObservacao"); // Seu textarea/input de observações (se houver)
+    const btnEnviar = document.getElementById("btnEnviar");
+    const statusDiv = document.getElementById("statusMensagem");
 
-  // -------------------------------------------------------------
-  // 1. ENVIO MANUAL DO FORMULÁRIO PARA O BANCO SQLITE LOCAL
-  // -------------------------------------------------------------
-  if (formOS) {
-    formOS.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    if (!inputFiles.files || inputFiles.files.length === 0) {
+        alert("Por favor, selecione ou tire ao menos uma foto.");
+        return;
+    }
 
-      const dadosFormulario = {
-        cliente: document.getElementById('cliente').value,
-        descricao: document.getElementById('descricao').value,
-        status: document.getElementById('status').value
-      };
+    // Feedback visual para o usuário
+    if (btnEnviar) btnEnviar.disabled = true;
+    if (statusDiv) statusDiv.innerHTML = "⏳ Processando foto com IA e atualizando a planilha...";
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/os`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(dadosFormulario)
+    const formData = new FormData();
+    for (let i = 0; i < inputFiles.files.length; i++) {
+        formData.append("files", inputFiles.files[i]);
+    }
+    if (inputObs) {
+        formData.append("observacoes", inputObs.value);
+    }
+
+    try {
+        const response = await fetch(API_URL, {
+            method: "POST",
+            body: formData
         });
 
-        if (response.ok) {
-          const resultado = await response.json();
-          alert('Ordem de Serviço salva com sucesso no banco de dados!');
-          formOS.reset();
+        const resultado = await response.json();
+
+        if (response.ok && resultado.sucesso) {
+            if (statusDiv) statusDiv.innerHTML = `✅ O.S. #${resultado.id_os} registrada com sucesso!`;
+            
+            // Preenche os campos da sua interface bonita com o retorno do Gemini
+            if (document.getElementById("campoCliente")) document.getElementById("campoCliente").value = resultado.dados.cliente || "";
+            if (document.getElementById("campoEquipamento")) document.getElementById("campoEquipamento").value = resultado.dados.equipamento || "";
+            if (document.getElementById("campoDescricao")) document.getElementById("campoDescricao").value = resultado.dados.descricao || "";
+            if (document.getElementById("campoTecnico")) document.getElementById("campoTecnico").value = resultado.dados.tecnico || "";
+            
+            alert(`O.S. #${resultado.id_os} registrada e salva na planilha!`);
         } else {
-          alert('Erro ao salvar no banco de dados local.');
+            if (statusDiv) statusDiv.innerHTML = "❌ Erro: " + (resultado.detail || "Falha ao processar");
         }
-      } catch (erro) {
-        console.error('Erro ao conectar com a API local:', erro);
-        alert('Não foi possível conectar à API local. O Python está rodando no terminal?');
-      }
-    });
-  }
+    } catch (error) {
+        console.error("Erro na comunicação:", error);
+        if (statusDiv) statusDiv.innerHTML = "❌ Falha ao conectar com o servidor Python.";
+    } finally {
+        if (btnEnviar) btnEnviar.disabled = false;
+    }
+}
 
   // -------------------------------------------------------------
   // 2. PROCESSAMENTO DE OCR / IMAGEM COM O GEMINI VIA PYTHON
