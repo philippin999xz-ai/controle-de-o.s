@@ -1,5 +1,5 @@
 // Substitua pela URL exata gerada no painel do seu Render
-const API_URL = "https://seu-servico.onrender.com/api/registrar-os";
+const API_URL = "https://controle-de-o-s.onrender.com";
 
 async function enviarFotosParaOS() {
     const inputFiles = document.getElementById("inputFotos"); // Seu input tipo file
