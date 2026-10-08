@@ -6,7 +6,7 @@ import { z } from "zod";
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
-const FRONTEND_ORIGIN = (process.env.FRONTEND_ORIGIN || "https://philippin999xz-ai.github.io").replace(/\/$/, "");
+const ORIGENS = (process.env.FRONTEND_ORIGIN || "https://philippin999xz-ai.github.io").split(",").map(x => x.trim().replace(/\/$/, "")).filter(Boolean).concat(["http://localhost:5173", "http://localhost:4173"]);
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 app.disable("x-powered-by");
@@ -21,7 +21,7 @@ app.use(helmet({
 app.use(cors({
   origin(origin, cb) {
     // Permite requisições sem origin (como rotas diretas) ou da origem configurada
-    if (!origin || origin.replace(/\/$/, "") === FRONTEND_ORIGIN) {
+    if (!origin || ORIGENS.includes(origin.replace(/\/$/, ""))) {
       return cb(null, true);
     }
     return cb(null, false); // Retorna false em vez de disparar Error para não quebrar a resposta preflight
@@ -42,6 +42,7 @@ const limiter = rateLimit({
 });
 app.use("/api/", limiter);
 
+app.get("/", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "controle-os", ai: Boolean(GEMINI_API_KEY) });
 });
