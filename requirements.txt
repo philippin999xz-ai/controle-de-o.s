@@ -1,5 +1,6 @@
 fastapi
-uvicorn
+uvicorn[standard]
+google-generativeai
 httpx
 openpyxl
 python-multipart
