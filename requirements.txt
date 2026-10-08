@@ -1,7 +1,5 @@
 fastapi
 uvicorn[standard]
-google-generativeai
-pandas
+httpx
 openpyxl
 python-multipart
-python-dotenv
