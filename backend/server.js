@@ -7,7 +7,7 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { PROMPT_OS, SCHEMA_OS, normalizarResultado } from "./ler-os.js";
-import { abrirBanco } from "./db.js";
+import { conectarBanco, garantirBanco, obterBanco, estadoBanco, motivoErro } from "./db.js";
 import { rotasSync } from "./sync-routes.js";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -26,10 +26,13 @@ const MODELOS = (process.env.GEMINI_MODELS || process.env.GEMINI_MODEL || "gemin
 const THINKING = (process.env.GEMINI_THINKING || "low").trim(); // pouco raciocínio = pouco token; vazio = não enviar
 const APP_TOKEN = (process.env.APP_TOKEN || "").trim();   // chave de acesso do app (você digita uma vez em cada aparelho)
 if (APP_TOKEN && APP_TOKEN.length < 16) console.warn("[aviso] APP_TOKEN curto: use pelo menos 16 caracteres.");
-let db = null;
-try { db = await abrirBanco(); } catch (e) { console.error("[banco] não consegui conectar:", e?.message || e); }
-const SYNC_OK = Boolean(db && APP_TOKEN.length >= 16);
-if (db && !SYNC_OK) console.warn("[aviso] Banco configurado, mas falta APP_TOKEN (mín. 16 caracteres): sincronização desligada.");
+// O banco conecta em segundo plano: o Render só considera o deploy bom se a porta abrir logo,
+// e o Turso pode demorar a responder. Se cair depois, /api/sync reconecta na hora.
+const TOKEN_OK = APP_TOKEN.length >= 16;
+const SYNC_OK = () => TOKEN_OK && Boolean(obterBanco());
+conectarBanco().then(() => {
+  if (estadoBanco().ok && !TOKEN_OK) console.warn("[aviso] Banco conectado, mas falta APP_TOKEN (mín. 16 caracteres): sincronização desligada.");
+});
 const hash = (x) => createHash("sha256").update(String(x)).digest();
 function tokenOk(req) {
   const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || "");
@@ -77,7 +80,14 @@ const limiteChave = rateLimit({
 
 app.get("/api/health", (_req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json({ ok: true, service: "controle-os", ai: Boolean(GEMINI_API_KEY), models: MODELOS, front: TEM_FRONT, auth: Boolean(APP_TOKEN), sync: SYNC_OK });
+  const b = estadoBanco();
+  res.json({
+    ok: true, service: "controle-os", ai: Boolean(GEMINI_API_KEY), models: MODELOS, front: TEM_FRONT, auth: Boolean(APP_TOKEN),
+    sync: SYNC_OK(),
+    // Diagnóstico Render <-> Turso (sem segredos): se sync=false, o motivo aparece aqui.
+    banco: { configurado: b.configurado, conectado: b.ok, tentativas: b.tentativas, erro: b.ok ? null : b.erro },
+    tokenCurto: Boolean(APP_TOKEN) && !TOKEN_OK,
+  });
 });
 
 const FotoSchema = z.object({
@@ -152,10 +162,21 @@ app.post("/api/ler-os", limiteChave, exigirToken, async (req, res, next) => {
   }
 });
 
-app.use("/api/sync", limiteChave, (req, res, next) => {
-  if (!SYNC_OK) return res.status(503).json({ error: { code: "SYNC_NOT_CONFIGURED", message: "Sincronização não configurada no servidor (TURSO_DATABASE_URL e APP_TOKEN)." } });
+app.use("/api/sync", limiteChave, async (req, res, next) => {
+  const b = estadoBanco();
+  if (!b.configurado) return res.status(503).json({ error: { code: "SYNC_NOT_CONFIGURED", message: "Sincronização não configurada no servidor (TURSO_DATABASE_URL, TURSO_AUTH_TOKEN e APP_TOKEN)." } });
+  if (!TOKEN_OK) return res.status(503).json({ error: { code: "SYNC_NOT_CONFIGURED", message: "Falta APP_TOKEN no servidor (mín. 16 caracteres)." } });
   next();
-}, exigirToken, rotasSync(db));
+}, exigirToken, async (_req, res, next) => {
+  // Só chega aqui quem tem a chave certa. Se o Turso estava fora, tenta reconectar agora.
+  if (await garantirBanco()) return next();
+  res.status(502).json({ error: { code: "DB_UNAVAILABLE", message: estadoBanco().erro || "Banco na nuvem indisponível." } });
+}, rotasSync(obterBanco), (err, _req, res, next) => {
+  if (err?.type) return next(err); // erros de JSON/tamanho seguem o tratamento padrão
+  const motivo = motivoErro(err);
+  console.error("[sync]", motivo);
+  res.status(502).json({ error: { code: "DB_ERROR", message: motivo } });
+});
 
 app.use("/api", (_req, res) => res.status(404).json({ error: { code: "NOT_FOUND", message: "Rota não encontrada." } }));
 
@@ -199,5 +220,5 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`controle-os na porta ${PORT} · front: ${TEM_FRONT ? DIST : "NÃO ENCONTRADO"} · IA: ${GEMINI_API_KEY ? MODELOS.join(" > ") : "sem chave"} · nuvem: ${SYNC_OK ? "ligada" : "desligada"}`);
+  console.log(`controle-os na porta ${PORT} · front: ${TEM_FRONT ? DIST : "NÃO ENCONTRADO"} · IA: ${GEMINI_API_KEY ? MODELOS.join(" > ") : "sem chave"} · nuvem: ${estadoBanco().configurado ? (TOKEN_OK ? "conectando…" : "sem APP_TOKEN") : "desligada"}`);
 });

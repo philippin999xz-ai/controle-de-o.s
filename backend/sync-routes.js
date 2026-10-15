@@ -20,8 +20,13 @@ const Item = z.object({
 });
 const Lote = z.object({ itens: z.array(Item).min(1).max(100) });
 
-export function rotasSync(db) {
+// Recebe uma função que devolve o cliente atual do banco (ele pode reconectar durante a vida do servidor).
+export function rotasSync(obterBanco) {
   const r = express.Router();
+  const db = {
+    execute: (...a) => obterBanco().execute(...a),
+    batch: (...a) => obterBanco().batch(...a),
+  };
 
   // O.S. alteradas desde um instante (inclui as apagadas, para o outro aparelho também apagar)
   r.get("/os", async (req, res, next) => {

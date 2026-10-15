@@ -49,6 +49,17 @@ As fotos sobem junto e são baixadas só quando você abre a OS em outro aparelh
 Segurança: sem `APP_TOKEN` a nuvem fica desligada; com ela, a IA e a nuvem só respondem a quem tem a chave
 (e 20 chaves erradas seguidas bloqueiam o IP por 15 minutos). Não compartilhe a chave nem a publique no GitHub.
 
+### Se a nuvem não sincroniza (diagnóstico Render ↔ Turso)
+Abra `https://SEU-SERVICO.onrender.com/api/health`. O campo `banco` mostra o motivo, sem expor segredos:
+| Resultado | Causa provável |
+|---|---|
+| `banco.configurado: false` | `TURSO_DATABASE_URL` vazia, sem `libsql://` ou sem `TURSO_AUTH_TOKEN` no painel do Render |
+| `banco.erro` fala em token | `TURSO_AUTH_TOKEN` inválido/expirado ou de outro banco (gere um novo com `turso db tokens create`) |
+| `banco.erro` fala em "não encontrou o banco" | URL errada (`turso db show NOME --url`) |
+| `tokenCurto: true` | `APP_TOKEN` com menos de 16 caracteres |
+| `banco.conectado: true` e `sync: true` | tudo certo no servidor; confira a chave em Ajustes → Nuvem em cada aparelho |
+O servidor abre a porta sem esperar o Turso, tenta reconectar sozinho (6 vezes) e de novo a cada pedido de sincronização.
+
 ## Estrutura
 - `src/App.jsx` + `src/components/*` — interface · `src/store.js` — registros, fotos, tema e backup (neste navegador)
 - `src/api.js` — conexão com o backend (acorda o Render e tenta de novo) · `src/sync.js` — sincronização com a nuvem
