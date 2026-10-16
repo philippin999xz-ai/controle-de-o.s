@@ -3,6 +3,7 @@ import {regs,salvarOS,fotoPut} from "../store.js";
 import {lerOS,erroAmigavel,ErroApi} from "../api.js";
 import {CAMPOS,LONG,KEYS} from "../campos.js";
 import {reduzir,b64} from "../imagem.js";
+import Icon from "./Icon.jsx";
 
 export default function Nova({srv,edit,ligar,onSaved}){
   const [d,setD]=useState(edit||{}),[inc,setInc]=useState([]),[foto,setFoto]=useState(null);
@@ -34,20 +35,96 @@ export default function Nova({srv,edit,ligar,onSaved}){
     if(!salvarOS(o,!!foto))return setMsg("Não consegui salvar (armazenamento cheio?).");
     onSaved(ex?"✅ OS atualizada.":"✅ OS salva.");
   }
-  return <div className="card"><b>{edit?"Editar OS":"Nova OS"}</b>
-    <div className="mut">{msg||"Preencha à mão ou tire uma foto."}</div>
-    <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={e=>{escolher(e.target.files[0]);e.target.value=""}}/>
-    <input ref={gal} type="file" accept="image/*" hidden onChange={e=>{escolher(e.target.files[0]);e.target.value=""}}/>
-    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-      <button onClick={()=>cam.current.click()}>📷 TIRAR FOTO</button>
-      <button className="sec" onClick={()=>gal.current.click()}>🖼️ GALERIA</button></div>
-    <div className="mut" style={{marginTop:8}}>Dica: foto de cima, folha inteira e reta, boa luz.</div>
-    {foto&&<img className="prev" src={foto.url} alt="Foto da OS"/>}
-    <button disabled={!foto||busy} onClick={ler}>{busy?"⏳ AGUARDE...":"🤖 LER E PREENCHER"}</button>
-    <hr style={{border:0,borderTop:"1px solid var(--bd)",margin:"16px 0"}}/>
-    <div className="grid">{CAMPOS.map(([k,l])=>{
-      const p={value:d[k]||"",placeholder:l,className:inc.includes(k)?"low":"",onChange:e=>setD({...d,[k]:e.target.value})};
-      return <div key={k} style={LONG.includes(k)?{gridColumn:"1/-1"}:{}}><label>{l}{inc.includes(k)?" ⚠️ conferir":""}</label>{LONG.includes(k)?<textarea {...p}/>:<input {...p}/>}</div>})}</div>
-    <button onClick={salvar}>✅ SALVAR</button>
-  </div>;
+  return (
+    <div className="card new-order-card">
+      <b>{edit ? "Dados da ordem" : "Cadastrar ordem"}</b>
+      <div className="mut">{msg || "Preencha à mão ou tire uma foto."}</div>
+      <input
+        ref={cam}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={(e) => {
+          escolher(e.target.files[0]);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={gal}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          escolher(e.target.files[0]);
+          e.target.value = "";
+        }}
+      />
+      <div className="entry-layout">
+        <section className="photo-panel" aria-label="Foto da ordem">
+          <div className="photo-heading">
+            <Icon name="camera" />
+            <h2>Leitura por foto</h2>
+          </div>
+          <p className="mut">
+            Fotografe a ordem para preencher os campos automaticamente.
+          </p>
+          <div className="photo-actions">
+            <button onClick={() => cam.current.click()}>Tirar foto</button>
+            <button className="sec" onClick={() => gal.current.click()}>
+              Escolher imagem
+            </button>
+          </div>
+          <div className="mut" style={{ marginTop: 8 }}>
+            Dica: foto de cima, folha inteira e reta, boa luz.
+          </div>
+          {foto ? (
+            <img className="prev" src={foto.url} alt="Foto da OS" />
+          ) : (
+            <div className="photo-placeholder">
+              <Icon name="orders" size={42} />
+              <span>A foto da ordem aparecerá aqui</span>
+              <small>JPG, PNG ou outra imagem do aparelho</small>
+            </div>
+          )}
+          <button disabled={!foto || busy} onClick={ler}>
+            {busy ? "Lendo imagem…" : "Ler e preencher"}
+          </button>
+        </section>
+        <section className="fields-panel" aria-label="Dados da ordem">
+          <h2>Informações da ordem</h2>
+          <p className="mut">Revise os dados antes de salvar.</p>
+          <div className="grid">
+            {CAMPOS.map(([k, l]) => {
+              const p = {
+                id: "os-" + k,
+                value: d[k] || "",
+                placeholder: l,
+                className: inc.includes(k) ? "low" : "",
+                onChange: (e) => setD({ ...d, [k]: e.target.value }),
+              };
+              return (
+                <div
+                  key={k}
+                  style={LONG.includes(k) ? { gridColumn: "1/-1" } : {}}
+                >
+                  <label htmlFor={"os-" + k}>
+                    {l}
+                    {inc.includes(k) ? " ⚠️ conferir" : ""}
+                  </label>
+                  {LONG.includes(k) ? <textarea {...p} /> : <input {...p} />}
+                </div>
+              );
+            })}
+          </div>
+          <div className="form-footer">
+            <span className="mut">
+              Informe ao menos o número ou equipamento.
+            </span>
+            <button onClick={salvar}>Salvar ordem</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
 }

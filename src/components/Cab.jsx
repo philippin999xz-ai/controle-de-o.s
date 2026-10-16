@@ -1,8 +1,33 @@
-import {alternarTema} from "../store.js";
-const ICONE={sinc:["⏳","Sincronizando…"],ok:["☁️","Sincronizado com a nuvem"],erro:["⚠️","Falha ao sincronizar (veja Ajustes)"]};
-export default function Cab({nuvem}){
-  const ic=ICONE[nuvem?.s];
-  return <header><img alt="Açoforja" src="logo.png"/><div className="t">Gestão Inteligente de OS</div>
-    {ic&&<span className="nuvem" title={ic[1]} aria-label={ic[1]}>{ic[0]}</span>}
-    <button className="tema" aria-label="Alternar tema claro/escuro" onClick={alternarTema}>🌓</button></header>;
+import { alternarTema } from "../store.js";
+import Icon from "./Icon.jsx";
+export default function Cab({ nuvem }) {
+  const status = {
+    sinc: "Sincronizando",
+    ok: "Sincronizado",
+    erro: "Falha na sincronização",
+    off: "Dados neste aparelho",
+  };
+  return (
+    <header className="topbar">
+      <div className="breadcrumb">
+        Área de trabalho <span>/</span> <strong>Manutenção</strong>
+      </div>
+      <div className="header-actions">
+        <span className={"connection " + (nuvem?.s || "off")}>
+          <i />
+          {status[nuvem?.s] || status.off}
+        </span>
+        <button
+          className="tema"
+          aria-label="Alternar tema claro/escuro"
+          onClick={alternarTema}
+        >
+          <Icon name="sun" />
+        </button>
+        <span className="avatar" title="Área pessoal">
+          OS
+        </span>
+      </div>
+    </header>
+  );
 }
