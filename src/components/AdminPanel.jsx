@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { core } from "../auth.js";
+import { core, accountRequest, refreshAccount } from "../auth.js";
 import { req } from "../api.js";
-import { getToken, setToken } from "../store.js";
-import { resetarAuth } from "../sync.js";
+import { pend, pendFoto, importarBackup } from "../store.js";
+
 import Icon from "./Icon.jsx";
 
 function Editor({
@@ -55,7 +55,12 @@ const SECTIONS = [
   ["roles", "shield", "Cargos e permissões"],
   ["connections", "settings", "Conexões e dados"],
 ];
-export default function AdminPanel({ onRegister, onChanged, onOpenOrders }) {
+export default function AdminPanel({
+  onRegister,
+  onChanged,
+  onOpenOrders,
+  syncState,
+}) {
   const [section, setSection] = useState("overview"),
     [query, setQuery] = useState(""),
     [notice, setNotice] = useState("");
@@ -64,9 +69,7 @@ export default function AdminPanel({ onRegister, onChanged, onOpenOrders }) {
     [pin, setPin] = useState(""),
     [modalError, setModalError] = useState(""),
     [busy, setBusy] = useState(false);
-  const [token, setAccessToken] = useState(""),
-    [connected, setConnected] = useState(Boolean(getToken())),
-    [health, setHealth] = useState(null),
+  const [health, setHealth] = useState(null),
     [checking, setChecking] = useState(false);
   const upload = useRef();
   const users = core().users(),
@@ -125,12 +128,13 @@ export default function AdminPanel({ onRegister, onChanged, onOpenOrders }) {
         throw Error("Você não pode desativar a própria conta.");
       if (pin && !core().pinValido(pin))
         throw Error("O novo PIN deve ter de 4 a 8 números.");
-      if (!core().saveUsers(next))
-        throw Error("Não foi possível salvar os usuários.");
-      if (pin) {
-        const r = await core().definirPin(editUser.id, pin);
-        if (!r.ok) throw Error(r.erro);
-      }
+      await accountRequest("/users/" + encodeURIComponent(editUser.id), "PUT", {
+        nome: editUser.nome.trim(),
+        cargo: editUser.cargo,
+        ativo: editUser.ativo,
+        ...(pin ? { pin } : {}),
+      });
+      await refreshAccount();
       setEditUser(null);
       setPin("");
       changed("Usuário atualizado.");
@@ -151,15 +155,32 @@ export default function AdminPanel({ onRegister, onChanged, onOpenOrders }) {
     // Explicit confirmation stays inside the editor, without a browser prompt.
     setEditUser({ ...editUser, confirmDelete: true });
   }
-  function confirmDeleteUser() {
-    if (!core().saveUsers(users.filter((u) => u.id !== editUser.id))) {
-      setModalError("Não foi possível excluir o usuário.");
-      return;
+  async function confirmDeleteUser() {
+    try {
+      await accountRequest(
+        "/users/" + encodeURIComponent(editUser.id),
+        "DELETE",
+      );
+      await refreshAccount();
+      setEditUser(null);
+      changed(
+        "Usuário excluído do cadastro central. As ordens foram preservadas.",
+      );
+    } catch (e) {
+      setModalError(e.message);
     }
-    setEditUser(null);
-    changed("Usuário excluído. As ordens de serviço foram preservadas.");
   }
-  function saveRole(e) {
+  async function deleteRole(name) {
+    try {
+      await accountRequest("/roles/" + encodeURIComponent(name), "DELETE");
+      await refreshAccount();
+      setEditRole(null);
+      changed("Cargo removido do cadastro central.");
+    } catch (e) {
+      setModalError(e.message);
+    }
+  }
+  async function saveRole(e) {
     e.preventDefault();
     setModalError("");
     try {
@@ -189,12 +210,15 @@ export default function AdminPanel({ onRegister, onChanged, onOpenOrders }) {
       );
       if (!validAdmin(nextUsers, next))
         throw Error("Mantenha pelo menos um administrador ativo.");
-      if (!core().saveCargos(next))
-        throw Error("Não foi possível salvar o cargo.");
-      if (!core().saveUsers(nextUsers)) {
-        core().saveCargos(roles);
-        throw Error("Não foi possível atualizar os usuários do cargo.");
-      }
+      await accountRequest(
+        "/roles" +
+          (editRole.original
+            ? "/" + encodeURIComponent(editRole.original)
+            : ""),
+        editRole.original ? "PUT" : "POST",
+        { nome: name, nivel: value.nivel, perms: value.perms },
+      );
+      await refreshAccount();
       setEditRole(null);
       changed("Cargo salvo.");
     } catch (e) {
@@ -213,45 +237,68 @@ export default function AdminPanel({ onRegister, onChanged, onOpenOrders }) {
       setChecking(false);
     }
   }
-  function saveAccess(e) {
-    e.preventDefault();
-    if (token.trim().length < 16) {
-      setNotice("A chave de acesso precisa ter pelo menos 16 caracteres.");
-      return;
+  async function backup() {
+    try {
+      const data = await accountRequest("/backup");
+      const a = document.createElement("a"),
+        url = URL.createObjectURL(
+          new Blob([JSON.stringify(data)], { type: "application/json" }),
+        );
+      a.href = url;
+      a.download =
+        "backup_central_" + new Date().toISOString().slice(0, 10) + ".json";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) {
+      setNotice(e.message);
     }
-    setToken(token);
-    resetarAuth();
-    setAccessToken("");
-    setConnected(true);
-    changed("Acesso do aplicativo atualizado neste aparelho.");
   }
-  function backup() {
-    const a = document.createElement("a"),
-      url = URL.createObjectURL(
-        new Blob([JSON.stringify(core().exportarBackup())], {
-          type: "application/json",
-        }),
+  async function migrateLegacy() {
+    try {
+      for (const role of window.Core.cargos()) {
+        if (!role.fixo && !roles.some((r) => r.nome === role.nome))
+          await accountRequest("/roles", "POST", {
+            nome: role.nome,
+            nivel: Math.min(98, role.nivel),
+            perms: role.perms,
+          });
+      }
+      const result = await accountRequest("/migrate", "POST", {
+        users: window.Core.users(),
+      });
+      await refreshAccount();
+      changed(
+        `${result.importados} usuário(s) migrado(s) para o servidor. Contas existentes foram preservadas.`,
       );
-    a.href = url;
-    a.download =
-      "backup_administracao_" + new Date().toISOString().slice(0, 10) + ".json";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) {
+      setNotice(e.message);
+    }
   }
   async function restore(file) {
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (!Array.isArray(data?.os_regs))
-        throw Error("Arquivo de backup inválido.");
-      const result = core().importarBackup(data);
+      if (!Array.isArray(data.os_regs)) throw Error("Backup inválido.");
+      for (const role of data.os_cargos || []) {
+        if (!role.fixo && !roles.some((r) => r.nome === role.nome))
+          await accountRequest("/roles", "POST", {
+            nome: role.nome,
+            nivel: role.nivel,
+            perms: role.perms,
+          });
+      }
+      if (data.os_users?.length)
+        await accountRequest("/migrate", "POST", { users: data.os_users });
+      const result = importarBackup(data);
+      await refreshAccount();
       changed(
-        `Backup importado: ${result.nr} ordem(ns), ${result.nu} usuário(s) e ${result.nc} cargo(s) novo(s). Os dados existentes foram preservados.`,
+        `Backup importado. ${result.novos} ordem(ns) para envio automático.`,
       );
     } catch (e) {
-      setNotice(e.message || "Não foi possível importar o backup.");
+      setNotice(e.message);
     }
   }
+
   return (
     <div className="administration">
       <div className="admin-section-nav" aria-label="Seções da administração">
@@ -567,46 +614,45 @@ export default function AdminPanel({ onRegister, onChanged, onOpenOrders }) {
             </p>
           </section>
           <section className="card">
-            <h2>Acesso à sincronização</h2>
+            <h2>Sincronização automática</h2>
             <p className="mut">
-              {connected
-                ? "Este aparelho tem uma chave de acesso configurada."
-                : "Este aparelho ainda não tem uma chave de acesso configurada."}
+              Ordens e fotos são enviadas ao salvar. O app consulta alterações a
+              cada 15 segundos enquanto está aberto e tenta novamente ao
+              recuperar a conexão.
             </p>
-            <form onSubmit={saveAccess} autoComplete="off">
-              <label htmlFor="admin-cloud">
-                Nova chave de acesso do aplicativo
-              </label>
-              <input
-                id="admin-cloud"
-                type="password"
-                autoComplete="new-password"
-                value={token}
-                onChange={(e) => setAccessToken(e.target.value)}
-                placeholder="Digite somente se quiser configurar ou trocar"
-                minLength={16}
-              />
-              <div className="editor-actions">
-                <button disabled={!token.trim()}>Salvar acesso</button>
-                {connected && (
-                  <button
-                    type="button"
-                    className="sec"
-                    onClick={() => {
-                      setToken("");
-                      resetarAuth();
-                      setConnected(false);
-                      setAccessToken("");
-                      changed(
-                        "Acesso removido deste aparelho. Os registros foram mantidos.",
-                      );
-                    }}
-                  >
-                    Desconectar aparelho
-                  </button>
-                )}
-              </div>
-            </form>
+            <div className="service-status">
+              <span>Estado deste aparelho</span>
+              <span className="neutral-pill">
+                {{
+                  off: "Aguardando acesso",
+                  sinc: "Sincronizando…",
+                  ok: "Sincronizado",
+                  erro: "Falha no envio",
+                }[syncState?.s] || "Conectando"}
+              </span>
+            </div>
+            {syncState?.msg && (
+              <p role="alert" className="err">
+                {syncState.msg}
+              </p>
+            )}
+            <div className="service-status">
+              <span>Ordens aguardando envio</span>
+              <strong>{pend().length}</strong>
+            </div>
+            <div className="service-status">
+              <span>Fotos aguardando envio</span>
+              <strong>{pendFoto().length}</strong>
+            </div>
+            <p className="mut">
+              O login autoriza o acesso. Não é necessário digitar chave do Turso
+              nem APP_TOKEN em cada aparelho.
+            </p>
+            {window.Core.users().length > 0 && (
+              <button className="sec" onClick={migrateLegacy}>
+                Migrar usuários antigos deste navegador
+              </button>
+            )}
           </section>
           <section className="card admin-backup">
             <span className="role-icon">
@@ -800,13 +846,7 @@ export default function AdminPanel({ onRegister, onChanged, onOpenOrders }) {
               className="danger-text"
               type="button"
               disabled={users.some((u) => u.cargo === editRole.original)}
-              onClick={() => {
-                core().saveCargos(
-                  roles.filter((r) => r.nome !== editRole.original),
-                );
-                setEditRole(null);
-                changed("Cargo removido.");
-              }}
+              onClick={() => deleteRole(editRole.original)}
             >
               Excluir cargo sem usuários
             </button>

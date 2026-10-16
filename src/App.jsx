@@ -98,7 +98,7 @@ export default function App() {
   const sync = async () => {
     if (core()?.exigeLogin() || !configurado()) {
       setNuvem({ s: "off" });
-      return;
+      return { ok: false, msg: "Entre com seu usuário para sincronizar." };
     }
     setNuvem((p) => ({ ...p, s: "sinc" }));
     const r = await sincronizar();
@@ -106,7 +106,9 @@ export default function App() {
     if (r.ok) {
       setNuvem({ s: "ok", quando: new Date() });
       if (r.mudou) refresh();
-    } else setNuvem({ s: "erro", msg: r.msg || "Falha" });
+    } else if (r.pending) setNuvem({ s: "sinc" });
+    else setNuvem({ s: "erro", msg: r.msg || "Falha" });
+    return r;
   };
   useEffect(() => {
     ligar();
@@ -121,20 +123,43 @@ export default function App() {
     }
   }, []);
   useEffect(() => {
-    if (!account.required && srv.s === "online" && srv.sync) sync();
-  }, [srv.s, srv.sync, account.required]); // ao abrir
-  useEffect(() => {
-    // ao voltar para o app (celular <-> PC)
-    const f = () => {
-      if (
-        document.visibilityState === "visible" &&
-        Date.now() - ultimo.current > 60000
-      )
+    if (!account.user) return;
+    let debounce;
+    const run = () => {
+      if (document.visibilityState === "visible" && navigator.onLine !== false)
         sync();
     };
-    document.addEventListener("visibilitychange", f);
-    return () => document.removeEventListener("visibilitychange", f);
-  }, []);
+    const schedule = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(run, 200);
+    };
+    const visibility = () => {
+      if (document.visibilityState === "visible") schedule();
+    };
+    const storage = (e) => {
+      if (
+        e.key?.startsWith("os_cloud_" + account.user.id + ":") &&
+        /:(os_regs|os_pend|os_pend_foto|os_apagados)$/.test(e.key)
+      )
+        schedule();
+    };
+    run();
+    const timer = setInterval(run, 15000);
+    window.addEventListener("online", schedule);
+    window.addEventListener("focus", schedule);
+    window.addEventListener("os:records-changed", schedule);
+    window.addEventListener("storage", storage);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      clearTimeout(debounce);
+      clearInterval(timer);
+      window.removeEventListener("online", schedule);
+      window.removeEventListener("focus", schedule);
+      window.removeEventListener("os:records-changed", schedule);
+      window.removeEventListener("storage", storage);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [account.user?.id]);
 
   const vis = lerRegs().filter(
     (r) => account.can("ver_historico") || r.usuario_id === account.user?.id,
@@ -221,10 +246,30 @@ export default function App() {
     if (tab !== "admin") setTab("hist");
     setAviso(message || "");
   };
-  if (account.required || (tab === "admin" && !account.user))
+  if (!account.ready)
+    return (
+      <main className="access-screen">
+        <div className="access-card">
+          <h1>Conectando ao servidor…</h1>
+          <p>Consultando seus cadastros centrais.</p>
+        </div>
+      </main>
+    );
+  if (account.error && !account.user)
+    return (
+      <main className="access-screen">
+        <div className="access-card">
+          <h1>Não foi possível conectar</h1>
+          <p role="alert">{account.error}</p>
+          <button onClick={account.retry}>Tentar novamente</button>
+        </div>
+      </main>
+    );
+  if (account.required)
     return (
       <AccountScreen
-        initialMode={core().aberto() ? "register" : "login"}
+        setupRequired={!account.hasUsers}
+        onRetry={account.retry}
         onSuccess={signedIn}
       />
     );
@@ -328,6 +373,7 @@ export default function App() {
                 setAviso("");
               }}
               onOpenOrders={() => setTab("hist")}
+              syncState={nuvem}
             />
           )}
           {tab === "diag" && allowed("diag") && <Diagnostico />}

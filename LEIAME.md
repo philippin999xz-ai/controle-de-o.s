@@ -13,7 +13,7 @@ No painel do serviço `controle-de-o-s` → Settings:
 | Build Command | `npm run build:render` |
 | Start Command | `npm start` |
 | Health Check Path | `/api/health` |
-| Environment | `GEMINI_API_KEY` (obrigatória), `NODE_VERSION=22` |
+| Environment | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_NAME`, `ADMIN_PIN`, `NODE_VERSION=22`; `GEMINI_API_KEY` para IA |
 Depois: **Manual Deploy → Clear build cache & deploy**. Abra `https://SEU-SERVICO.onrender.com/`.
 (Ou use o `render.yaml` como Blueprint.) `/api/health` mostra `"front": true` quando o dist foi encontrado.
 
@@ -22,49 +22,42 @@ Depois: **Manual Deploy → Clear build cache & deploy**. Abra `https://SEU-SERV
 `FRONTEND_ORIGIN=https://SEU-USUARIO.github.io` (CORS). Para outro endereço de API: `VITE_API_BASE=https://...`.
 
 ## Desenvolvimento local
-`npm install` · em um terminal `npm --prefix backend install && GEMINI_API_KEY=... node backend/server.js` ·
-em outro `npm run dev` (o `/api` é encaminhado para `localhost:10000`; mude com `VITE_PROXY_TARGET`).
+Instale com `npm ci --include=dev` e `npm --prefix backend ci`. Configure `TURSO_DATABASE_URL` (é permitido `file:/tmp/controle-os.db` para desenvolvimento), `ADMIN_NAME` e `ADMIN_PIN` no processo do backend. Inicie `npm start` e, em outro terminal, `npm run dev`. O proxy aponta para `localhost:10000`; `VITE_PROXY_TARGET` permite outro destino. Os `.env.example` documentam os nomes; o servidor lê variáveis do processo, não carrega arquivos `.env` automaticamente.
 
-## Usar como app (celular e PC)
-Abra o endereço do Render no navegador. No celular: menu do navegador → **Adicionar à tela inicial / Instalar app**
-(abre em tela cheia, com ícone). No PC funciona direto no navegador (Chrome/Edge também oferecem "Instalar").
-O app compartilha usuários, PINs e cargos com o painel administrativo. Sem usuários cadastrados, o uso local continua livre; após criar o primeiro administrador, passa a exigir login.
+## Dados e contas centrais no Render / Turso
+1. No Render → Environment, configure `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN` do mesmo banco Turso.
+2. Para um banco sem usuários, defina `ADMIN_NAME` e `ADMIN_PIN` (4 a 8 números) e faça o deploy. O servidor cria o primeiro administrador uma única vez. Alterar essas variáveis depois não redefine contas existentes; use a administração para redefinir PINs.
+3. Entre com esse usuário em qualquer aparelho. Cadastre a equipe em **Administração → Usuários**. O mesmo nome, PIN e cargo funcionam no desktop e no celular. Não se configura chave em cada aparelho; `APP_TOKEN` deixou de autenticar o navegador.
+4. As tabelas `usuarios`, `cargos` e `sessoes` são criadas automaticamente ao lado de `os` e `fotos`. As ordens e fotos existentes são preservadas. As chaves do Turso e da IA nunca são enviadas ao app.
 
-**Sem a nuvem**, os dados ficam só no navegador de cada aparelho (use *Ajustes → Baixar/Restaurar backup* para levar de um a outro).
-**Com a nuvem** (abaixo), celular e PC mostram o mesmo histórico e as mesmas fotos. *Exportar Excel* fica no Histórico.
-Os registros do app anterior continuam aparecendo (mesmas chaves de armazenamento).
+A autorização é feita no backend em toda requisição. PINs usam PBKDF2 com sal; sessões opacas duram 8 horas, ficam no sessionStorage da aba e são guardadas no banco apenas como hash. Logout revoga a sessão no servidor; redefinir o PIN revoga as sessões do usuário em todos os aparelhos. Não há cadastro público de administradores. O login é limitado por IP e por conta. Cargos são verificados no servidor, incluindo os limites de histórico, edição, exclusão e uso de IA.
 
-## Nuvem: mesmo histórico no celular e no PC (Turso, grátis)
-1. Crie uma conta em **turso.tech** (plano grátis, sem cartão; confira os limites atuais em turso.tech/pricing).
-2. Crie um banco (ex.: `controle-os`). Copie a **Database URL** (`libsql://...`) e gere um **token** do banco.
-   (Pelo terminal: `turso auth signup` · `turso db create controle-os` · `turso db show controle-os --url` · `turso db tokens create controle-os`.)
-3. No Render → Environment, crie: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` e `APP_TOKEN` (invente uma frase longa, mín. 16 caracteres).
-   As tabelas são criadas sozinhas. Faça o deploy.
-4. Em **cada aparelho**, entre como administrador e abra **Ajustes → Outros → Painel de administração → Conexões e dados**. Informe a `APP_TOKEN` em *Chave de acesso do aplicativo*, salve e volte ao app.
-   O primeiro aparelho envia todo o histórico; os outros baixam. O ícone ☁️ no topo mostra que está sincronizado.
+### Sincronização automática
+Após o login, o app busca as ordens autorizadas. Salvar/excluir envia a fila automaticamente. Enquanto a página está visível, o app consulta o servidor a cada 15 segundos, ao recuperar a internet e ao voltar à página. Não depende de botão de sincronização. A cópia local é isolada por conta e serve como cache/fila temporária offline; usuários e permissões têm o Turso como fonte de verdade. Um aparelho fechado ou sem internet recebe alterações ao reconectar/abrir. Não é um serviço de sincronização em segundo plano com o navegador fechado.
 
-Como funciona: tudo é gravado primeiro no aparelho (funciona sem internet) e sincroniza em segundo plano ao abrir o app, ao voltar
-para ele, e depois de salvar/excluir. Se duas edições da mesma OS acontecerem, **vence a mais recente**. Exclusões também propagam.
-As fotos sobem junto e são baixadas só quando você abre a OS em outro aparelho.
-Segurança: sem `APP_TOKEN` a nuvem fica desligada; com ela, a IA e a nuvem só respondem a quem tem a chave
-(e 20 chaves erradas seguidas bloqueiam o IP por 15 minutos). Não compartilhe a chave nem a publique no GitHub.
+O indicador só mostra sincronizado após concluir os pedidos da API. Em **Administração → Conexões e dados**, confira o erro concreto e as quantidades pendentes. Listagens grandes são paginadas sem avançar o cursor antes de salvar os resultados. Atualizações feitas durante um envio continuam na fila. Conflitos de O.S. seguem a versão mais recente, e fotos são armazenadas no banco remoto.
 
-### Se a nuvem não sincroniza (diagnóstico Render ↔ Turso)
-Abra `https://SEU-SERVICO.onrender.com/api/health`. O campo `banco` mostra o motivo, sem expor segredos:
-| Resultado | Causa provável |
-|---|---|
-| `banco.configurado: false` | `TURSO_DATABASE_URL` vazia, sem `libsql://` ou sem `TURSO_AUTH_TOKEN` no painel do Render |
-| `banco.erro` fala em token | `TURSO_AUTH_TOKEN` inválido/expirado ou de outro banco (gere um novo com `turso db tokens create`) |
-| `banco.erro` fala em "não encontrou o banco" | URL errada (`turso db show NOME --url`) |
-| `tokenCurto: true` | `APP_TOKEN` com menos de 16 caracteres |
-| `banco.conectado: true` e `sync: true` | tudo certo no servidor; confira a chave em Ajustes → Nuvem em cada aparelho |
-O servidor abre a porta sem esperar o Turso, tenta reconectar sozinho (6 vezes) e de novo a cada pedido de sincronização.
+### Migração dos dados antigos
+No aparelho onde estavam os registros antigos, entre como administrador central. A primeira entrada copia as ordens e fotos locais para a fila da conta, sem apagar a origem. Para usuários, use **Administração → Conexões e dados → Migrar usuários antigos deste navegador**. Somente um administrador autenticado no servidor pode realizar a importação. Nomes já existentes são preservados; os outros usuários mantêm IDs e PINs compatíveis. Hashes legados são atualizados após um login válido. Cargos personalizados ausentes também são importados; cargos centrais existentes não são sobrescritos.
+
+Backups centrais são exportados pela API administrativa. Importações são autenticadas, preservam usuários já existentes e colocam as ordens na fila de envio. Fotos não são incluídas no JSON de backup.
+
+### Como verificar que o envio é real
+Cadastre uma O.S. com número exclusivo e aguarde sincronizar. No editor SQL do **mesmo banco** configurado no Render, execute:
+```sql
+SELECT id, dados, atualizado_em FROM os
+WHERE json_extract(dados, '$.numero_os') = 'TESTE-TURSO-001' AND apagado = 0;
+```
+A existência das tabelas ou `banco.conectado: true` confirma conectividade/esquema, mas não prova que uma ordem específica chegou. A linha no banco remoto é a confirmação dessa gravação. Faça login em outro navegador para verificar a leitura e a propagação automática.
+
+`/api/health` não expõe segredos e mostra configuração/conexão do banco. Se o banco estiver indisponível, login e sincronização informam o erro em vez de liberar um acesso local simulado. Não apague o cache nem os registros enquanto houver envios pendentes.
 
 ## Estrutura
 - `src/App.jsx` + `src/components/*` — interface · `src/store.js` — registros, fotos, tema e backup (neste navegador)
 - `src/api.js` — conexão com o backend (acorda o Render e tenta de novo) · `src/sync.js` — sincronização com a nuvem
 - `backend/server.js` — API + serve `dist/` · `backend/db.js` + `backend/sync-routes.js` — banco na nuvem (Turso) · `backend/ler-os.js` — prompt, schema e limpeza da leitura da O.S. (Gemini)
-- `public/admin.html` + `public/core.js` — painel antigo (manuais/peças), mantido à parte e acessível em Ajustes
+- `backend/accounts.js` — usuários, cargos, sessões e migração no servidor; `src/auth.js` — login central
+- `public/admin.html` — redireciona para a administração React; `public/core.js` permanece apenas para leitura/migração de cadastros legados
 - `src/ocrLocal.js` — sobra do OCR antigo, não é mais usado · `legado-python-fastapi/` — backend antigo, não usado
 
 ## Leitura da O.S. com Gemini
@@ -82,20 +75,12 @@ Se um modelo não existir ou estiver fora do ar, o servidor tenta o próximo da 
 | `GEMINI_MODELS` | modelos em ordem de tentativa, separados por vírgula (padrão: `gemini-3.8-flash,gemini-3.5-flash`) |
 | `GEMINI_THINKING` | `low` (padrão); `high` se a letra de mão errar muito; vazio = não enviar |
 
-## Conta e administração integradas
-
-O menu de conta fica no rodapé da lateral no desktop e no topo no celular. Login e cadastro abrem com campos vazios. O primeiro acesso permite criar o administrador; novos usuários são cadastrados por administradores, no menu ou na nova administração, acessível em **Ajustes → Outros**.
-
-App e painel reutilizam `public/core.js`, os cadastros `os_users`/`os_cargos` e a sessão `os_sess` no sessionStorage da mesma aba. PINs existentes e seus hashes continuam compatíveis. As permissões dos cargos controlam os recursos exibidos, e novas ordens identificam quem as cadastrou. A configuração de sincronização/Turso fica somente na administração; credenciais do banco permanecem no servidor.
-
-Este é o sistema de acesso local legado: os usuários não são sincronizados entre aparelhos, e permissões no navegador não substituem autenticação e autorização na API. A sincronização de O.S. existente continua usando o acesso do aplicativo. O cadastro local não fornece autenticação de usuários na API; o token de acesso existente protege as rotas quando configurado.
-
 ## Administração e investigação de falhas
 
 A administração foi reconstruída em React, com visão geral, tabela de usuários, edição de acesso/PIN, cargos e permissões, conexões e backup. `public/admin.html` redireciona para `?view=admin`; o layout e os scripts do painel antigo deixaram de ser usados. Os cadastros existentes são mantidos. O login exige digitar nome e PIN, não oferece lembrar credenciais e nunca grava PINs em texto. Hashes dos cadastros legados continuam necessários para validar os usuários.
 
-**Solução de problemas** permite descrever equipamento, código e sintomas. O backend envia o pedido ao Gemini `generateContent` com a ferramenta `google_search`, e devolve a orientação e as fontes retornadas pelo provedor. Respostas sem evidência de pesquisa e sem fontes HTTPS são recusadas; não há simulação de busca em produção. A permissão usada é `perguntar_ia`. A rota `POST /api/diagnostico` reutiliza o controle de acesso por `APP_TOKEN`, valida o corpo e limita consultas a 10 por minuto por IP.
+**Solução de problemas** permite descrever equipamento, código e sintomas. O backend envia o pedido ao Gemini `generateContent` com a ferramenta `google_search`, e devolve a orientação e as fontes retornadas pelo provedor. Respostas sem evidência de pesquisa e sem fontes HTTPS são recusadas; não há simulação de busca em produção. A permissão usada é `perguntar_ia`. A rota `POST /api/diagnostico` exige sessão central e a permissão `perguntar_ia`, valida o corpo e limita consultas a 10 por minuto por IP.
 
 Configure `GEMINI_API_KEY` somente no servidor. `DIAGNOSTICO_MODEL` é opcional (padrão `gemini-2.5-flash`) e deve selecionar um modelo disponível na conta com suporte a Google Search. A conta precisa permitir grounding/pesquisa e ter cota disponível; cobrança segue o provedor. Não reutilizamos uma resposta sem fontes como diagnóstico confirmado. A orientação é auxiliar: confirme o manual e os procedimentos de segurança antes de intervir.
 
-Validação local: `node --test backend/diagnostico.test.js` e `npm run build`. Os testes de integração do provedor usam respostas simuladas para verificar contratos, fontes e erros; eles não comprovam acesso real à internet pelo provedor. Sem credencial configurada, a rota responde `503 AI_NOT_CONFIGURED`.
+Validação local: `node --test backend/*.test.js` e `npm run build`. `accounts.integration.test.js` usa banco SQLite real e dois processos de servidor para testar identidade compartilhada, permissões, persistência, paginação e revogação de sessões. Isso valida o código, mas não substitui o teste com as credenciais do Turso no Render. Os testes de integração do provedor usam respostas simuladas para verificar contratos, fontes e erros; eles não comprovam acesso real à internet pelo provedor. Sem credencial configurada, a rota responde `503 AI_NOT_CONFIGURED`.

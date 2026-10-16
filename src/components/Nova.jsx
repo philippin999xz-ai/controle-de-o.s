@@ -80,7 +80,7 @@ export default function Nova({
     const o = ex
       ? { ...ex }
       : {
-          id: "os_" + Date.now(),
+          id: "os_" + crypto.randomUUID(),
           criado: new Date().toISOString(),
           foto: false,
           usuario: user?.nome || "",

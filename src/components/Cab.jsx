@@ -14,10 +14,18 @@ export default function Cab({ nuvem }) {
         Área de trabalho <span>/</span> <strong>Manutenção</strong>
       </div>
       <div className="header-actions">
-        <span className={"connection " + (nuvem?.s || "off")}>
+        <span
+          className={"connection " + (nuvem?.s || "off")}
+          title={nuvem?.msg || status[nuvem?.s] || status.off}
+        >
           <i />
           {status[nuvem?.s] || status.off}
         </span>
+        {nuvem?.s === "erro" && (
+          <span className="sync-error-detail" role="status">
+            {nuvem.msg}
+          </span>
+        )}
         <button
           className="tema"
           aria-label="Alternar tema claro/escuro"

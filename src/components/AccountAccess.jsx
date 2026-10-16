@@ -11,8 +11,7 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
     [busy, setBusy] = useState(false);
   const initial = core().aberto();
   const register = mode === "register";
-  const mayRegister =
-    initial || Boolean(core().usuario()?.perms.includes("painel_admin"));
+  const mayRegister = Boolean(core().usuario()?.perms.includes("painel_admin"));
   const users = core()
     .users()
     .filter((u) => u.ativo);
@@ -31,24 +30,11 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
           pin,
         });
         if (!result.ok) throw Error(result.erro);
-        if (initial) {
-          const session = await core().login(result.user.id, pin);
-          if (!session.ok) throw Error(session.erro);
-        }
         setPin("");
         setRepeat("");
         onSuccess(register && !initial ? "Usuário cadastrado." : "");
       } else {
-        const user = users.find(
-          (u) =>
-            u.nome.toLocaleLowerCase("pt-BR") ===
-            name.trim().toLocaleLowerCase("pt-BR"),
-        );
-        if (!user) {
-          setPin("");
-          throw Error("Usuário ou PIN inválidos.");
-        }
-        const result = await core().login(user.id, pin);
+        const result = await core().login(name.trim(), pin);
         setPin("");
         if (!result.ok) throw Error(result.erro);
         onSuccess("");
@@ -165,9 +151,7 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
         )}
         <button
           className="access-submit"
-          disabled={
-            busy || (register && !mayRegister) || (!register && !users.length)
-          }
+          disabled={busy || (register && !mayRegister)}
         >
           {busy ? "Aguarde…" : register ? "Criar conta" : "Entrar"}
         </button>
@@ -188,7 +172,7 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
         </p>
       )}
       <p className="access-local">
-        Use o mesmo navegador para acessar os cadastros deste aparelho.
+        Seu usuário e suas permissões são os mesmos em todos os aparelhos.
       </p>
     </div>
   );
@@ -237,7 +221,12 @@ export function AccountDialog({ mode, onClose, onSuccess, onMode }) {
     </dialog>
   );
 }
-export function AccountScreen({ onSuccess, initialMode = "login" }) {
+export function AccountScreen({
+  onSuccess,
+  initialMode = "login",
+  setupRequired = false,
+  onRetry,
+}) {
   const [mode, setMode] = useState(initialMode);
   return (
     <main className="access-screen">
@@ -252,12 +241,30 @@ export function AccountScreen({ onSuccess, initialMode = "login" }) {
         </p>
       </div>
       <div className="access-card">
-        <AccessForm
-          key={mode}
-          mode={mode}
-          onSuccess={onSuccess}
-          onMode={setMode}
-        />
+        {setupRequired ? (
+          <div className="access-form">
+            <img className="app-logo" src="./logo.png" alt="Açoforja" />
+            <h1>Configure o acesso central</h1>
+            <p className="mut">
+              No Render, defina ADMIN_NAME e ADMIN_PIN (4 a 8 números) nas
+              variáveis do servidor e faça um novo deploy. Essas credenciais
+              criam somente o primeiro administrador no Turso.
+            </p>
+            <p className="mut">
+              Depois, usuários e cargos são cadastrados nesta administração e
+              ficam disponíveis em todos os aparelhos. Nenhuma chave do banco é
+              digitada no app.
+            </p>
+            <button onClick={onRetry}>Verificar configuração</button>
+          </div>
+        ) : (
+          <AccessForm
+            key={mode}
+            mode={mode}
+            onSuccess={onSuccess}
+            onMode={setMode}
+          />
+        )}
       </div>
     </main>
   );

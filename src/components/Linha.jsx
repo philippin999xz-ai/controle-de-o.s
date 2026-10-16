@@ -16,7 +16,7 @@ export default function Linha({ r, onEdit, onDel }) {
       vivo = false;
       if (u) URL.revokeObjectURL(u);
     };
-  }, [r.id, r.foto]);
+  }, [r.id, r.foto, r.editado]);
   return (
     <div className="row">
       <b>OS {r.numero_os || "—"}</b>{" "}

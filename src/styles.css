@@ -2130,3 +2130,25 @@ main.access-screen {
     border-color: var(--mut);
   }
 }
+
+.sync-error-detail {
+  max-width: 300px;
+  font-size: 11px;
+  color: var(--bad);
+}
+@media (max-width: 700px) {
+  .sync-error-detail {
+    position: absolute;
+    top: 60px;
+    left: 16px;
+    right: 16px;
+    max-width: none;
+    background: var(--card);
+    border: 1px solid var(--bad);
+    padding: 10px;
+    z-index: 10;
+  }
+  .page-heading {
+    margin-top: 8px;
+  }
+}
