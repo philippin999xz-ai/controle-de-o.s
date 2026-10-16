@@ -1,1 +1,1 @@
-# controle-de-o.s
+# controle-de-o.s  inteligente via OCR
