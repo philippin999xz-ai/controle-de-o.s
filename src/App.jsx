@@ -5,10 +5,8 @@ import {
   iniciarTema,
   exportarBackup,
   importarBackup,
-  getToken,
-  setToken,
 } from "./store.js";
-import { sincronizar, configurado, resetarAuth } from "./sync.js";
+import { sincronizar, configurado } from "./sync.js";
 import { acordar } from "./api.js";
 import { CAMPOS } from "./campos.js";
 import Cab from "./components/Cab.jsx";
@@ -16,6 +14,12 @@ import Aviso from "./components/Aviso.jsx";
 import Nova from "./components/Nova.jsx";
 import OrdersTable from "./components/OrdersTable.jsx";
 import Icon from "./components/Icon.jsx";
+import { useAccount, core } from "./auth.js";
+import {
+  AccountDialog,
+  AccountScreen,
+  UserMenu,
+} from "./components/AccountAccess.jsx";
 
 const TABS = [
   ["hist", "orders", "Ordens de serviço"],
@@ -36,6 +40,15 @@ const baixar = (nome, blob) => {
 };
 
 export default function App() {
+  const account = useAccount();
+  const [access, setAccess] = useState(null);
+  const permits = {
+    hist: "pesquisar",
+    nova: "criar_os",
+    pesq: "pesquisar",
+    dash: "dashboard",
+  };
+  const allowed = (k) => !permits[k] || account.can(permits[k]);
   const [, tick] = useState(0),
     refresh = () => tick((n) => n + 1);
   const [tab, setTab] = useState("hist"),
@@ -51,8 +64,7 @@ export default function App() {
     sync: false,
     auth: false,
   });
-  const [nuvem, setNuvem] = useState({ s: "off" }),
-    [chave, setChave] = useState("");
+  const [nuvem, setNuvem] = useState({ s: "off" });
   const arq = useRef(),
     ultimo = useRef(0);
   const ligar = async () => {
@@ -67,7 +79,7 @@ export default function App() {
     );
   };
   const sync = async () => {
-    if (!configurado()) {
+    if (core()?.exigeLogin() || !configurado()) {
       setNuvem({ s: "off" });
       return;
     }
@@ -92,8 +104,8 @@ export default function App() {
     }
   }, []);
   useEffect(() => {
-    if (srv.s === "online" && srv.sync) sync();
-  }, [srv.s, srv.sync]); // ao abrir
+    if (!account.required && srv.s === "online" && srv.sync) sync();
+  }, [srv.s, srv.sync, account.required]); // ao abrir
   useEffect(() => {
     // ao voltar para o app (celular <-> PC)
     const f = () => {
@@ -107,7 +119,9 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", f);
   }, []);
 
-  const vis = lerRegs();
+  const vis = lerRegs().filter(
+    (r) => account.can("ver_historico") || r.usuario_id === account.user?.id,
+  );
   const busca = q.trim().toLowerCase(),
     achados = busca
       ? vis.filter((r) => JSON.stringify(r).toLowerCase().includes(busca))
@@ -119,22 +133,25 @@ export default function App() {
       (!equip || r.equipamento === equip),
   );
   const nova = () => {
+    if (!account.can("criar_os")) return;
     setEdit(null);
     setAviso("");
     setTab("nova");
   };
   const editar = (r) => {
+    if (!account.can("editar_os")) return;
     setEdit(r);
     setTab("nova");
   };
   const del = async (r) => {
+    if (!account.can("excluir_os")) return;
     if (!confirm("Excluir esta OS?")) return;
     excluirOS(r.id);
     refresh();
     sync();
   };
   const exportar = async () => {
-    if (!vis.length) return;
+    if (!account.can("exportar") || !vis.length) return;
     const XLSX = await import("xlsx");
     const ws = XLSX.utils.json_to_sheet(
       vis.map((r) => {
@@ -151,17 +168,12 @@ export default function App() {
   const backup = () =>
     baixar(
       "backup_os_" + new Date().toISOString().slice(0, 10) + ".json",
-      new Blob([JSON.stringify(exportarBackup())], {
+      new Blob([JSON.stringify({ ...exportarBackup(), os_regs: vis })], {
         type: "application/json",
       }),
     );
-  const salvarChave = () => {
-    setToken(chave);
-    setChave("");
-    resetarAuth();
-    sync();
-  };
   const restaurar = async (f) => {
+    if (!account.can("painel_admin")) return;
     if (!f) return;
     try {
       const r = importarBackup(JSON.parse(await f.text()));
@@ -185,9 +197,20 @@ export default function App() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
 
+  const signedIn = (message) => {
+    account.update();
+    setAccess(null);
+    setEdit(null);
+    setTab("hist");
+    setAviso(message || "");
+  };
+  if (account.required) return <AccountScreen onSuccess={signedIn} />;
+
   return (
     <>
-      <a className="skip-link" href="#main-content">Ir para o conteúdo</a>
+      <a className="skip-link" href="#main-content">
+        Ir para o conteúdo
+      </a>
       <aside className="sidebar">
         <a
           className="brand"
@@ -206,7 +229,7 @@ export default function App() {
         </a>
         <div className="workspace-label">Seu espaço de trabalho</div>
         <nav aria-label="Navegação principal">
-          {TABS.map(([k, i, l]) => (
+          {TABS.filter(([k]) => allowed(k)).map(([k, i, l]) => (
             <button
               key={k}
               className={tab === k ? "on" : ""}
@@ -223,13 +246,19 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-footer">
-          <span className="workspace-avatar">M</span>
-          <div>
-            Manutenção<small>Organização pessoal</small>
-          </div>
-          <Icon name="chevron" size={16} />
-        </div>
+        <UserMenu
+          user={account.user}
+          canAdmin={Boolean(account.user?.perms.includes("painel_admin"))}
+          onAccess={setAccess}
+          onLogout={() => {
+            account.logout();
+            setEdit(null);
+            setAccess(null);
+            setTab("hist");
+            setAviso("");
+          }}
+          onSettings={() => setTab("cfg")}
+        />
       </aside>
       <div className="workspace">
         <Cab nuvem={nuvem} />
@@ -255,7 +284,7 @@ export default function App() {
                 }
               </p>
             </div>
-            {tab !== "nova" && tab !== "cfg" && (
+            {tab !== "nova" && tab !== "cfg" && account.can("criar_os") && (
               <button className="primary-action" onClick={nova}>
                 <Icon name="plus" size={18} /> Nova ordem
               </button>
@@ -274,10 +303,13 @@ export default function App() {
               </button>
             </div>
           )}
-          {tab === "nova" && (
+          {tab === "nova" && allowed("nova") && (
             <Nova
               key={edit?.id || "novo"}
               srv={srv}
+              user={account.user}
+              canUseAI={account.can("usar_ia")}
+              canSave={account.can(edit ? "editar_os" : "criar_os")}
               edit={edit}
               ligar={ligar}
               onSaved={(m) => {
@@ -289,7 +321,7 @@ export default function App() {
               }}
             />
           )}
-          {tab === "pesq" && (
+          {tab === "pesq" && allowed("pesq") && (
             <section className="card">
               <div className="section-heading">
                 <h2>Pesquisar ordens</h2>
@@ -306,9 +338,9 @@ export default function App() {
               {busca ? (
                 <OrdersTable
                   items={achados}
-                  onEdit={editar}
-                  onDel={del}
-                  onCreate={nova}
+                  onEdit={account.can("editar_os") ? editar : undefined}
+                  onDel={account.can("excluir_os") ? del : undefined}
+                  onCreate={account.can("criar_os") ? nova : undefined}
                 />
               ) : (
                 <div className="empty-state">
@@ -319,7 +351,7 @@ export default function App() {
               )}
             </section>
           )}
-          {tab === "hist" && (
+          {tab === "hist" && allowed("hist") && (
             <>
               <div className="overview-strip">
                 <div>
@@ -363,7 +395,7 @@ export default function App() {
                   </h2>
                   <button
                     className="sec export-button"
-                    disabled={!vis.length}
+                    disabled={!vis.length || !account.can("exportar")}
                     onClick={exportar}
                   >
                     <Icon name="arrow" size={17} /> Exportar Excel
@@ -444,9 +476,9 @@ export default function App() {
                 </div>
                 <OrdersTable
                   items={filtrados.slice(0, lim)}
-                  onEdit={editar}
-                  onDel={del}
-                  onCreate={nova}
+                  onEdit={account.can("editar_os") ? editar : undefined}
+                  onDel={account.can("excluir_os") ? del : undefined}
+                  onCreate={account.can("criar_os") ? nova : undefined}
                 />
                 <div className="table-footer">
                   <span>
@@ -467,7 +499,7 @@ export default function App() {
               </section>
             </>
           )}
-          {tab === "dash" && (
+          {tab === "dash" && allowed("dash") && (
             <div className="card">
               <b>📈 Painel</b>
               <div className="kpis" style={{ marginTop: 8 }}>
@@ -512,94 +544,15 @@ export default function App() {
                 {srv.s === "online"
                   ? srv.ai
                     ? "🟢 disponível"
-                    : "🔴 indisponível (GEMINI_API_KEY no servidor)"
+                    : "Indisponível no momento"
                   : "⏳ conectando"}
               </div>
-              <label>☁️ Nuvem — mesmo histórico no celular e no PC</label>
-              {srv.s === "online" && !srv.sync && (
-                <div className="mut">
-                  Nuvem não está ligada no servidor (faltam TURSO_DATABASE_URL,
-                  TURSO_AUTH_TOKEN e APP_TOKEN no Render). Veja o LEIAME.
-                </div>
-              )}
-              {(srv.sync || configurado()) && (
-                <>
-                  <div className="mut">
-                    {configurado() ? (
-                      <>
-                        Chave de acesso neste aparelho: ✅ definida. Estado:{" "}
-                        {
-                          {
-                            off: "—",
-                            sinc: "⏳ sincronizando…",
-                            ok:
-                              "☁️ sincronizado às " +
-                              (nuvem.quando?.toLocaleTimeString("pt-BR", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              }) || ""),
-                            erro: "⚠️ " + (nuvem.msg || "falha"),
-                          }[nuvem.s]
-                        }
-                      </>
-                    ) : (
-                      "Informe a chave de acesso (a mesma APP_TOKEN do servidor) para ligar a nuvem neste aparelho."
-                    )}
-                  </div>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    placeholder={
-                      configurado()
-                        ? "Trocar chave de acesso…"
-                        : "Chave de acesso (APP_TOKEN)"
-                    }
-                    value={chave}
-                    onChange={(e) => setChave(e.target.value)}
-                  />
-                  <button
-                    disabled={chave.trim().length < 16}
-                    onClick={salvarChave}
-                  >
-                    Salvar chave e sincronizar
-                  </button>
-                  {configurado() && (
-                    <button
-                      className="sec"
-                      onClick={() => {
-                        resetarAuth();
-                        sync();
-                      }}
-                    >
-                      🔄 Sincronizar agora
-                    </button>
-                  )}
-                  {configurado() && (
-                    <button
-                      className="sec"
-                      onClick={() => {
-                        if (
-                          confirm(
-                            "Remover a chave deste aparelho? Os dados daqui continuam, mas param de sincronizar.",
-                          )
-                        ) {
-                          setToken("");
-                          setNuvem({ s: "off" });
-                          refresh();
-                        }
-                      }}
-                    >
-                      Desligar nuvem neste aparelho
-                    </button>
-                  )}
-                </>
-              )}
               <label>Backup em arquivo</label>
               <div className="mut">
                 Cópia de segurança dos registros (sem fotos). Útil mesmo com a
                 nuvem ligada.
               </div>
-              <button onClick={backup}>
+              <button disabled={!account.can("exportar")} onClick={backup}>
                 ⬇️ Baixar backup ({vis.length} OS)
               </button>
               <input
@@ -612,17 +565,63 @@ export default function App() {
                   e.target.value = "";
                 }}
               />
-              <button className="sec" onClick={() => arq.current.click()}>
+              <button
+                className="sec"
+                disabled={!account.can("painel_admin")}
+                onClick={() => arq.current.click()}
+              >
                 ⬆️ Restaurar backup
               </button>
-              <label>Outros</label>
-              <a className="lk" href="admin.html">
-                Painel antigo (manuais e peças)
-              </a>
+              <section className="other-tools">
+                <h2>Outros</h2>
+                <p className="mut">
+                  Acesse a administração integrada ao aplicativo.
+                </p>
+                {account.user?.perms.includes("painel_admin") ||
+                core().aberto() ? (
+                  <a className="admin-access-card" href="./admin.html">
+                    <Icon name="settings" />
+                    <span>
+                      <strong>Painel de administração</strong>
+                      <small>
+                        Usuários, cargos e configurações do sistema antigo
+                      </small>
+                    </span>
+                    <Icon name="chevron" size={18} />
+                  </a>
+                ) : (
+                  <p className="mut">
+                    O painel e o cadastro de usuários ficam disponíveis para
+                    administradores.
+                  </p>
+                )}
+                <button
+                  className="sec"
+                  onClick={() =>
+                    setAccess(
+                      account.user && account.can("painel_admin")
+                        ? "register"
+                        : "login",
+                    )
+                  }
+                >
+                  {account.user && account.can("painel_admin")
+                    ? "Cadastrar usuário"
+                    : "Acessar outra conta"}
+                </button>
+              </section>
             </div>
           )}
         </main>
       </div>
+      {access && (
+        <AccountDialog
+          mode={access}
+          onMode={setAccess}
+          onClose={() => setAccess(null)}
+          onSuccess={signedIn}
+        />
+      )}
     </>
   );
 }

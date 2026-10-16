@@ -1,4 +1,5 @@
 const paths = {
+  user: "M20 21v-2a7 7 0 0 0-14 0v2M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
   plus: "M12 5v14M5 12h14",
   search: "m21 21-4.5-4.5M19 10a9 9 0 1 1-18 0 9 9 0 0 1 18 0",
   orders: "M8 4H5v17h14V4h-3M9 2h6v4H9zM8 11h8M8 15h5",

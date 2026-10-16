@@ -13,13 +13,20 @@ export default function OrdersTable({ items, onEdit, onDel, onCreate }) {
         <p>
           Cadastre uma O.S. ou ajuste os filtros para encontrar seus registros.
         </p>
-        <button onClick={onCreate}>
-          <Icon name="plus" size={17} /> Cadastrar ordem
-        </button>
+        {onCreate && (
+          <button onClick={onCreate}>
+            <Icon name="plus" size={17} /> Cadastrar ordem
+          </button>
+        )}
       </div>
     );
   return (
-    <div className="table-scroll" role="region" aria-label="Tabela de ordens de serviço" tabIndex={0}>
+    <div
+      className="table-scroll"
+      role="region"
+      aria-label="Tabela de ordens de serviço"
+      tabIndex={0}
+    >
       <table className="orders-table">
         <thead>
           <tr>
@@ -72,20 +79,26 @@ export default function OrdersTable({ items, onEdit, onDel, onCreate }) {
                     : "—"}
                 </td>
                 <td>
-                  <button
-                    className="table-edit"
-                    onClick={() => onEdit(r)}
-                    aria-label={"Editar OS " + (r.numero_os || "sem número")}
-                  >
-                    Editar
-                  </button>
+                  {onEdit && (
+                    <button
+                      className="table-edit"
+                      onClick={() => onEdit(r)}
+                      aria-label={"Editar OS " + (r.numero_os || "sem número")}
+                    >
+                      Editar
+                    </button>
+                  )}
                 </td>
               </tr>
               {open === r.id && (
                 <tr className="detail-row">
                   <td colSpan={7}>
                     <Linha r={r} onEdit={onEdit} onDel={onDel} />
-                    {r.observacoes && <p><strong>Observações:</strong> {r.observacoes}</p>}
+                    {r.observacoes && (
+                      <p>
+                        <strong>Observações:</strong> {r.observacoes}
+                      </p>
+                    )}
                   </td>
                 </tr>
               )}

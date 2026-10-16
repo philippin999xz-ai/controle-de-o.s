@@ -28,7 +28,7 @@ em outro `npm run dev` (o `/api` é encaminhado para `localhost:10000`; mude com
 ## Usar como app (celular e PC)
 Abra o endereço do Render no navegador. No celular: menu do navegador → **Adicionar à tela inicial / Instalar app**
 (abre em tela cheia, com ícone). No PC funciona direto no navegador (Chrome/Edge também oferecem "Instalar").
-App de uso pessoal: **sem login, PIN ou cargos**; abre direto em Nova OS.
+O app compartilha usuários, PINs e cargos com o painel administrativo. Sem usuários cadastrados, o uso local continua livre; após criar o primeiro administrador, passa a exigir login.
 
 **Sem a nuvem**, os dados ficam só no navegador de cada aparelho (use *Ajustes → Baixar/Restaurar backup* para levar de um a outro).
 **Com a nuvem** (abaixo), celular e PC mostram o mesmo histórico e as mesmas fotos. *Exportar Excel* fica no Histórico.
@@ -40,7 +40,7 @@ Os registros do app anterior continuam aparecendo (mesmas chaves de armazenament
    (Pelo terminal: `turso auth signup` · `turso db create controle-os` · `turso db show controle-os --url` · `turso db tokens create controle-os`.)
 3. No Render → Environment, crie: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` e `APP_TOKEN` (invente uma frase longa, mín. 16 caracteres).
    As tabelas são criadas sozinhas. Faça o deploy.
-4. Em **cada aparelho**: abra o app → **Ajustes → Nuvem** → cole a `APP_TOKEN` → *Salvar chave e sincronizar*.
+4. Em **cada aparelho**, entre como administrador e abra **Ajustes → Outros → Painel de administração → Config. → Sincronização / Turso**. Informe a `APP_TOKEN` em *Chave de acesso do aplicativo*, salve e volte ao app.
    O primeiro aparelho envia todo o histórico; os outros baixam. O ícone ☁️ no topo mostra que está sincronizado.
 
 Como funciona: tudo é gravado primeiro no aparelho (funciona sem internet) e sincroniza em segundo plano ao abrir o app, ao voltar
@@ -81,3 +81,11 @@ Se um modelo não existir ou estiver fora do ar, o servidor tenta o próximo da 
 | `GEMINI_API_KEY` | chave do Google AI Studio (obrigatória) |
 | `GEMINI_MODELS` | modelos em ordem de tentativa, separados por vírgula (padrão: `gemini-3.8-flash,gemini-3.5-flash`) |
 | `GEMINI_THINKING` | `low` (padrão); `high` se a letra de mão errar muito; vazio = não enviar |
+
+## Conta e administração integradas
+
+O menu de conta fica no rodapé da lateral no desktop e no topo no celular. Login e cadastro abrem com campos vazios. O primeiro acesso permite criar o administrador; novos usuários são cadastrados por administradores, no menu ou no painel antigo, acessível em **Ajustes → Outros**.
+
+App e painel reutilizam `public/core.js`, os cadastros `os_users`/`os_cargos` e a sessão `os_sess` no sessionStorage da mesma aba. PINs existentes e seus hashes continuam compatíveis. As permissões dos cargos controlam os recursos exibidos, e novas ordens identificam quem as cadastrou. A configuração de sincronização/Turso fica somente na administração; credenciais do banco permanecem no servidor.
+
+Este é o sistema de acesso local legado: os usuários não são sincronizados entre aparelhos, e permissões no navegador não substituem autenticação e autorização na API. A sincronização de O.S. existente continua usando o acesso do aplicativo. O backend e a integração com o provedor de IA não foram alterados por esta integração visual.

@@ -390,7 +390,7 @@ function aplicarTema(t){
 }
 const temaAtual=()=>document.documentElement.getAttribute("data-theme")==="light"?"light":"dark";
 function alternarTema(){const n=temaAtual()==="light"?"dark":"light";try{localStorage.setItem("os_tema",n)}catch(e){}aplicarTema(n)}
-function iniciarTema(){let t="dark";try{t=localStorage.getItem("os_tema")==="light"?"light":"dark"}catch(e){}aplicarTema(t)}
+function iniciarTema(){let t="light";try{t=localStorage.getItem("os_tema")==="dark"?"dark":"light"}catch(e){}aplicarTema(t)}
 
 return{LS,esc,uid,PERMS,TODAS,cargos,saveCargos,permsDoCargo,users,saveUsers,regs,saveRegs,
   hashPin,pinValido,login,logout,usuario,aberto,exigeLogin,can,adminsAtivos,bloqueio,
@@ -398,3 +398,6 @@ return{LS,esc,uid,PERMS,TODAS,cargos,saveCargos,permsDoCargo,users,saveUsers,reg
   Manuais,Busca,LIM,lerCSV,montarAba,sanit:{reg:limpaReg,user:limpaUser,cargo:limpaCargo,manual:limpaManualMeta,abas:limpaAbas,ID_RE,str},
   aplicarTema,temaAtual,alternarTema,iniciarTema};
 })();
+
+// Ponte compartilhada com a interface React; mantém os cadastros e a sessão legados.
+window.Core = Core;

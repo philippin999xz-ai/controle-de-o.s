@@ -1,34 +1,34 @@
 :root {
   font-family: "Segoe UI", Verdana, sans-serif;
   color-scheme: light;
-  --bg: #f4f6f9;
+  --bg: #f5f5f5;
   --card: #fff;
-  --tx: #243244;
-  --mut: #6b7788;
-  --pri: #2166c1;
+  --tx: #202020;
+  --mut: #686868;
+  --pri: #171717;
   --onpri: #fff;
-  --pribg: #edf4ff;
-  --bd: #e3e8ef;
-  --line: #d4dce6;
+  --pribg: #efefef;
+  --bd: #e3e3e3;
+  --line: #cecece;
   --warn: #a66a12;
   --bad: #bd3547;
   --ok: #29805a;
-  --navbg: #252e38;
+  --navbg: #181818;
   --input: #fff;
   font-synthesis: none;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #151d28;
-  --card: #1d2836;
-  --tx: #e5ebf3;
-  --mut: #a0afc1;
-  --pri: #79b2ff;
-  --onpri: #132439;
-  --pribg: #283d57;
-  --bd: #344355;
-  --line: #46566a;
-  --input: #17212e;
+  --bg: #1e1e1e;
+  --card: #252526;
+  --tx: #d4d4d4;
+  --mut: #a6a6a6;
+  --pri: #f0f0f0;
+  --onpri: #1e1e1e;
+  --pribg: #333333;
+  --bd: #3c3c3c;
+  --line: #555555;
+  --input: #1e1e1e;
   --warn: #e3b25c;
   --bad: #ff91a0;
 }
@@ -82,7 +82,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
-  outline: 3px solid #4e9bfa;
+  outline: 3px solid #888888;
   outline-offset: 3px;
 }
 button.sec {
@@ -117,7 +117,7 @@ svg {
   position: fixed;
   inset: 0 auto 0 0;
   background: var(--navbg);
-  color: #c2ccd7;
+  color: #c9c9c9;
   display: flex;
   flex-direction: column;
   z-index: 20;
@@ -136,24 +136,24 @@ svg {
 .brand-mark {
   height: 42px;
   width: 42px;
-  border: 1px solid #647a91;
+  border: 1px solid #626262;
   border-radius: 10px;
   display: grid;
   place-items: center;
-  color: #a9ceff;
+  color: #ededed;
 }
 .brand small {
   display: block;
   font-size: 11px;
   letter-spacing: 0.2px;
   font-weight: 400;
-  color: #abb7c5;
+  color: #b2b2b2;
   margin-top: 2px;
 }
 .workspace-label {
   padding: 0 23px 13px;
   font-size: 11px;
-  color: #9aa9ba;
+  color: #a4a4a4;
 }
 .sidebar nav {
   padding: 0 12px;
@@ -164,7 +164,7 @@ svg {
 .sidebar nav button {
   background: transparent;
   justify-content: flex-start;
-  color: #c3ceda;
+  color: #c6c6c6;
   font-size: 13px;
   font-weight: 500;
   border-radius: 6px;
@@ -174,23 +174,23 @@ svg {
   text-align: left;
 }
 .sidebar nav button.on {
-  background: #394a5e;
+  background: #343434;
   color: #fff;
-  box-shadow: inset 3px 0 #7db3ff;
+  box-shadow: inset 3px 0 #fff;
 }
 .sidebar nav button:hover {
-  background: #344150;
+  background: #2c2c2c;
 }
 .nav-count {
   margin-left: auto;
-  background: #52667e;
+  background: #555555;
   color: white;
   padding: 0 7px;
   border-radius: 4px;
   font-size: 11px;
 }
 .sidebar-footer {
-  border-top: 1px solid #43505e;
+  border-top: 1px solid #424242;
   margin: auto 18px 20px;
   padding-top: 20px;
   display: flex;
@@ -200,7 +200,7 @@ svg {
 }
 .sidebar-footer small {
   display: block;
-  color: #99a9bb;
+  color: #aaa;
   font-size: 10px;
 }
 .sidebar-footer > svg {
@@ -211,8 +211,8 @@ svg {
   width: 34px;
   display: grid;
   place-items: center;
-  background: #405269;
-  color: #d9e9ff;
+  background: #3a3a3a;
+  color: #fff;
   border-radius: 7px;
 }
 .workspace {
@@ -234,7 +234,7 @@ svg {
 }
 .breadcrumb span {
   margin: 0 13px;
-  color: #a5afbb;
+  color: #aaa;
 }
 .breadcrumb strong {
   font-weight: 500;
@@ -256,7 +256,7 @@ svg {
   height: 6px;
   width: 6px;
   border-radius: 50%;
-  background: #8a98a7;
+  background: #999;
 }
 .connection.ok i {
   background: var(--ok);
@@ -308,7 +308,7 @@ h1 {
 }
 .primary-action {
   flex-shrink: 0;
-  box-shadow: 0 2px 3px #173f6c12;
+  box-shadow: 0 2px 3px #00000012;
 }
 .overview-strip {
   display: grid;
@@ -512,8 +512,8 @@ h2 {
   color: #216b4c;
 }
 .type-tag.predictive {
-  background: #ebeffc;
-  color: #4a57a1;
+  background: #ededed;
+  color: #555555;
 }
 .date-cell {
   color: var(--mut);
@@ -784,7 +784,7 @@ details summary {
     inset: auto 0 0;
     width: 100%;
     height: auto;
-    border-top: 1px solid #4b5b6c;
+    border-top: 1px solid #484848;
     padding-bottom: env(safe-area-inset-bottom);
   }
   .brand,
@@ -811,7 +811,7 @@ details summary {
   }
   .sidebar nav button.on {
     box-shadow: none;
-    background: #394a5e;
+    background: #343434;
   }
   .sidebar nav button svg {
     width: 19px;
@@ -1019,7 +1019,7 @@ details summary {
   color: var(--mut);
 }
 .photo-placeholder > svg {
-  color: #91a4b9;
+  color: #999;
 }
 .photo-placeholder span {
   font-size: 11px;
@@ -1102,12 +1102,396 @@ details summary {
     padding-inline: 18px;
   }
 }
-[hidden] { display: none !important; }
-.table-scroll { position: relative; }
-.orders-table th { position: relative; }
-.card.history-card { padding: 0; }
-.skip-link { position: fixed; top: -100px; left: 16px; z-index: 100; padding: 12px 18px; border-radius: 6px; background: var(--card); color: var(--pri); }
-.skip-link:focus { top: 12px; }
+[hidden] {
+  display: none !important;
+}
+.table-scroll {
+  position: relative;
+}
+.orders-table th {
+  position: relative;
+}
+.card.history-card {
+  padding: 0;
+}
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 100;
+  padding: 12px 18px;
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--pri);
+}
+.skip-link:focus {
+  top: 12px;
+}
 @media (max-width: 700px) {
-  .table-scroll::before { content: "Deslize a tabela para ver mais detalhes"; display: block; padding: 0 14px 12px; color: var(--mut); font-size: 10px; }
+  .table-scroll::before {
+    content: "Deslize a tabela para ver mais detalhes";
+    display: block;
+    padding: 0 14px 12px;
+    color: var(--mut);
+    font-size: 10px;
+  }
+}
+.app-logo {
+  width: 150px;
+  height: auto;
+  display: block;
+  filter: invert(1);
+  object-fit: contain;
+}
+[data-theme="dark"] .app-logo {
+  filter: none;
+}
+.header-logo {
+  width: 125px;
+  max-height: 36px;
+  margin-right: 12px;
+}
+.topbar {
+  justify-content: flex-start;
+}
+.header-actions {
+  margin-left: auto;
+}
+.topbar .breadcrumb {
+  margin-right: auto;
+}
+.user-menu {
+  position: relative;
+  margin: auto 14px 18px;
+  border-top: 1px solid #414141;
+  padding-top: 14px;
+}
+.user-trigger {
+  width: 100%;
+  background: transparent;
+  color: #efefef;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 9px 8px;
+  gap: 10px;
+  font-size: 12px;
+}
+.user-trigger > svg {
+  margin-left: auto;
+}
+.user-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-summary small {
+  display: block;
+  color: #b4b4b4;
+  font-size: 10px;
+  font-weight: 400;
+  margin-top: 3px;
+}
+.user-trigger .workspace-avatar {
+  flex: none;
+}
+.user-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 260px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  color: var(--tx);
+  box-shadow: 0 12px 40px #0003;
+  overflow: hidden;
+  padding: 6px;
+  z-index: 50;
+}
+.user-popover button,
+.user-popover a {
+  width: 100%;
+  background: transparent;
+  color: var(--tx);
+  text-decoration: none;
+  display: flex;
+  justify-content: flex-start;
+  text-align: left;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 11px 12px;
+  border-radius: 5px;
+}
+.user-popover a > svg {
+  margin-left: auto;
+}
+.user-popover button:hover,
+.user-popover a:hover {
+  background: var(--pribg);
+}
+.account-summary {
+  padding: 10px 12px 14px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid var(--bd);
+}
+.account-summary strong,
+.account-summary span {
+  display: block;
+}
+.account-summary strong {
+  font-size: 13px;
+}
+.account-summary span {
+  font-size: 11px;
+  color: var(--mut);
+  margin-top: 3px;
+}
+.user-popover .logout-action {
+  color: var(--bad);
+}
+.account-dialog {
+  padding: 0;
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  width: min(440px, calc(100% - 32px));
+  max-height: calc(100dvh - 40px);
+  background: var(--card);
+  color: var(--tx);
+  box-shadow: 0 24px 100px #0004;
+  overflow: auto;
+}
+.account-dialog::backdrop {
+  background: #0008;
+  backdrop-filter: blur(4px);
+}
+.dialog-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  min-height: 32px;
+  font-size: 22px;
+  background: transparent;
+  color: var(--mut);
+  z-index: 1;
+}
+.access-form {
+  padding: 38px 34px 28px;
+}
+.access-form > .app-logo {
+  margin-bottom: 30px;
+  width: 160px;
+}
+.access-form h1 {
+  font-size: 25px;
+  letter-spacing: -0.7px;
+}
+.access-form > p.mut {
+  margin-top: 10px;
+  line-height: 1.7;
+}
+.access-form form {
+  margin-top: 26px;
+}
+.access-form label {
+  color: var(--tx);
+  font-size: 12px;
+  margin-top: 18px;
+}
+.access-form input,
+.access-form select {
+  min-height: 44px;
+  background: var(--input);
+}
+.access-form .access-submit {
+  width: 100%;
+  margin-top: 26px;
+}
+.access-switch {
+  display: flex;
+  margin: 15px auto 0;
+  padding: 8px 0;
+  background: transparent;
+  color: var(--tx);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: underline;
+}
+.access-help {
+  font-size: 12px;
+  color: var(--mut);
+  text-align: center;
+  margin-top: 20px;
+}
+.access-local {
+  font-size: 10px;
+  color: var(--mut);
+  line-height: 1.6;
+  margin: 26px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--bd);
+}
+main.access-screen {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100dvh;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  align-items: center;
+}
+.access-intro {
+  align-self: stretch;
+  background: #181818;
+  color: #fff;
+  padding: 12vh 8vw;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.access-intro > span {
+  font-size: 16px;
+  color: #aaa;
+  margin-bottom: auto;
+}
+.access-intro h2 {
+  font-size: clamp(30px, 3.5vw, 56px);
+  letter-spacing: -1.8px;
+  line-height: 1.18;
+  font-weight: 600;
+  margin: 50px 0 22px;
+}
+.access-intro p {
+  max-width: 350px;
+  color: #b5b5b5;
+  font-size: 14px;
+  line-height: 1.8;
+  margin-bottom: auto;
+}
+.access-card {
+  width: min(440px, 100%);
+  justify-self: center;
+  padding: 20px;
+}
+.access-card .access-form {
+  padding-inline: 20px;
+}
+.other-tools {
+  margin-top: 28px;
+  border-top: 1px solid var(--bd);
+  padding-top: 24px;
+}
+.other-tools > p {
+  margin: 8px 0 18px;
+}
+.admin-access-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-decoration: none;
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--tx);
+  max-width: 620px;
+  background: var(--bg);
+}
+.admin-access-card > span {
+  flex: 1;
+}
+.admin-access-card strong {
+  display: block;
+  font-size: 13px;
+}
+.admin-access-card small {
+  display: block;
+  font-size: 11px;
+  color: var(--mut);
+  margin-top: 4px;
+}
+.other-tools > button {
+  margin-top: 15px;
+}
+@media (max-width: 1000px) {
+  .topbar .breadcrumb {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .header-logo {
+    width: 115px;
+    margin: 0;
+  }
+  .header-actions {
+    padding-right: 44px;
+    gap: 12px;
+  }
+  .user-menu {
+    position: fixed;
+    right: 12px;
+    top: 9px;
+    bottom: auto;
+    margin: 0;
+    border: 0;
+    padding: 0;
+    z-index: 40;
+  }
+  .user-trigger {
+    padding: 0;
+    min-height: 36px;
+    width: 36px;
+  }
+  .user-trigger > .user-summary,
+  .user-trigger > svg {
+    display: none;
+  }
+  .user-trigger .workspace-avatar {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line);
+    background: var(--pribg);
+    color: var(--tx);
+  }
+  .user-popover {
+    bottom: auto;
+    top: calc(100% + 12px);
+    left: auto;
+    right: 0;
+    width: min(280px, calc(100vw - 24px));
+  }
+  .account-dialog {
+    max-height: calc(100dvh - 24px);
+  }
+  .access-form {
+    padding: 36px 24px 24px;
+  }
+  .access-form h1 {
+    font-size: 23px;
+  }
+  main.access-screen {
+    grid-template-columns: 1fr;
+    align-content: center;
+  }
+  .access-intro {
+    display: none;
+  }
+  .access-card {
+    padding: 16px;
+  }
+  .access-card .access-form {
+    padding: 30px 12px;
+  }
+  .admin-access-card {
+    padding: 15px;
+    gap: 10px;
+  }
+  .admin-access-card small {
+    line-height: 1.5;
+  }
+  .topbar .connection {
+    display: none;
+  }
 }

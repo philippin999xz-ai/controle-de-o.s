@@ -9,6 +9,7 @@ export default function Cab({ nuvem }) {
   };
   return (
     <header className="topbar">
+      <img className="app-logo header-logo" src="./logo.png" alt="Açoforja" />
       <div className="breadcrumb">
         Área de trabalho <span>/</span> <strong>Manutenção</strong>
       </div>
@@ -24,9 +25,6 @@ export default function Cab({ nuvem }) {
         >
           <Icon name="sun" />
         </button>
-        <span className="avatar" title="Área pessoal">
-          OS
-        </span>
       </div>
     </header>
   );
