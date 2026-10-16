@@ -14,6 +14,8 @@ import Aviso from "./components/Aviso.jsx";
 import Nova from "./components/Nova.jsx";
 import OrdersTable from "./components/OrdersTable.jsx";
 import Icon from "./components/Icon.jsx";
+import AdminPanel from "./components/AdminPanel.jsx";
+import Diagnostico from "./components/Diagnostico.jsx";
 import { useAccount, core } from "./auth.js";
 import {
   AccountDialog,
@@ -26,6 +28,8 @@ const TABS = [
   ["nova", "plus", "Nova ordem"],
   ["pesq", "search", "Pesquisa"],
   ["dash", "chart", "Indicadores"],
+  ["diag", "globe", "Solução de problemas"],
+  ["admin", "shield", "Administração"],
   ["cfg", "settings", "Ajustes"],
 ];
 const PAGINA = 30;
@@ -47,11 +51,20 @@ export default function App() {
     nova: "criar_os",
     pesq: "pesquisar",
     dash: "dashboard",
+    diag: "perguntar_ia",
+    admin: "painel_admin",
   };
-  const allowed = (k) => !permits[k] || account.can(permits[k]);
+  const allowed = (k) =>
+    k === "admin"
+      ? Boolean(account.user && account.can("painel_admin"))
+      : !permits[k] || account.can(permits[k]);
   const [, tick] = useState(0),
     refresh = () => tick((n) => n + 1);
-  const [tab, setTab] = useState("hist"),
+  const [tab, setTab] = useState(() =>
+      new URLSearchParams(location.search).get("view") === "admin"
+        ? "admin"
+        : "hist",
+    ),
     [edit, setEdit] = useState(null),
     [aviso, setAviso] = useState(""),
     [q, setQ] = useState(""),
@@ -65,6 +78,10 @@ export default function App() {
     auth: false,
   });
   const [nuvem, setNuvem] = useState({ s: "off" });
+  useEffect(() => {
+    if (account.user && !allowed(tab))
+      setTab(TABS.find(([k]) => allowed(k))?.[0] || "cfg");
+  }, [tab, account.user?.id, account.user?.perms.join("|")]);
   const arq = useRef(),
     ultimo = useRef(0);
   const ligar = async () => {
@@ -201,10 +218,16 @@ export default function App() {
     account.update();
     setAccess(null);
     setEdit(null);
-    setTab("hist");
+    if (tab !== "admin") setTab("hist");
     setAviso(message || "");
   };
-  if (account.required) return <AccountScreen onSuccess={signedIn} />;
+  if (account.required || (tab === "admin" && !account.user))
+    return (
+      <AccountScreen
+        initialMode={core().aberto() ? "register" : "login"}
+        onSuccess={signedIn}
+      />
+    );
 
   return (
     <>
@@ -232,7 +255,7 @@ export default function App() {
           {TABS.filter(([k]) => allowed(k)).map(([k, i, l]) => (
             <button
               key={k}
-              className={tab === k ? "on" : ""}
+              className={(tab === k ? "on " : "") + "nav-" + k}
               aria-current={tab === k ? "page" : undefined}
               onClick={() => {
                 setAviso("");
@@ -258,6 +281,7 @@ export default function App() {
             setAviso("");
           }}
           onSettings={() => setTab("cfg")}
+          onAdmin={() => setTab("admin")}
         />
       </aside>
       <div className="workspace">
@@ -280,17 +304,33 @@ export default function App() {
                     pesq: "Encontre o que precisa no histórico da manutenção.",
                     dash: "Uma visão dos registros da sua operação.",
                     cfg: "Gerencie seus dados e preferências.",
+                    diag: "Pesquise sintomas, investigue causas e consulte referências técnicas.",
+                    admin:
+                      "Gerencie a equipe, as permissões e os serviços da operação.",
                   }[tab]
                 }
               </p>
             </div>
-            {tab !== "nova" && tab !== "cfg" && account.can("criar_os") && (
-              <button className="primary-action" onClick={nova}>
-                <Icon name="plus" size={18} /> Nova ordem
-              </button>
-            )}
+            {tab !== "nova" &&
+              !["cfg", "admin", "diag"].includes(tab) &&
+              account.can("criar_os") && (
+                <button className="primary-action" onClick={nova}>
+                  <Icon name="plus" size={18} /> Nova ordem
+                </button>
+              )}
           </div>
           <Aviso srv={srv} onRetry={ligar} />
+          {tab === "admin" && allowed("admin") && (
+            <AdminPanel
+              onRegister={() => setAccess("register")}
+              onChanged={() => {
+                account.update();
+                setAviso("");
+              }}
+              onOpenOrders={() => setTab("hist")}
+            />
+          )}
+          {tab === "diag" && allowed("diag") && <Diagnostico />}
           {aviso && (
             <div className="banner" role="status">
               {aviso}
@@ -579,16 +619,17 @@ export default function App() {
                 </p>
                 {account.user?.perms.includes("painel_admin") ||
                 core().aberto() ? (
-                  <a className="admin-access-card" href="./admin.html">
+                  <button
+                    className="admin-access-card"
+                    onClick={() => setTab("admin")}
+                  >
                     <Icon name="settings" />
                     <span>
                       <strong>Painel de administração</strong>
-                      <small>
-                        Usuários, cargos e configurações do sistema antigo
-                      </small>
+                      <small>Equipe, permissões, conexões e dados</small>
                     </span>
                     <Icon name="chevron" size={18} />
-                  </a>
+                  </button>
                 ) : (
                   <p className="mut">
                     O painel e o cadastro de usuários ficam disponíveis para

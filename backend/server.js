@@ -1,6 +1,7 @@
 // Servidor único: API de IA (/api/*) + front React compilado (../dist).
 // Se ../dist não existir, responde só a API (modo "backend separado").
 import express from "express";
+import { diagnosticRouter } from "./diagnostico.js";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -69,6 +70,7 @@ const msgLimite = { error: { code: "RATE_LIMITED", message: "Muitas requisiçõe
 // IA: cada leitura custa dinheiro/cota.
 app.use("/api/ler-os", rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-7", legacyHeaders: false, message: msgLimite }));
 // Sincronização: muitas chamadas pequenas (fotos do histórico).
+app.use("/api/diagnostico", rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false, message: msgLimite }));
 app.use("/api/sync", rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: "draft-7", legacyHeaders: false, message: msgLimite }));
 // Contra tentativa de adivinhar a chave: conta só as respostas 401.
 const limiteChave = rateLimit({
@@ -161,6 +163,8 @@ app.post("/api/ler-os", limiteChave, exigirToken, async (req, res, next) => {
     return next(err);
   }
 });
+
+app.use("/api/diagnostico", limiteChave, exigirToken, diagnosticRouter({apiKey:GEMINI_API_KEY,baseURL:GEMINI_URL,model:process.env.DIAGNOSTICO_MODEL||"gemini-2.5-flash"}));
 
 app.use("/api/sync", limiteChave, async (req, res, next) => {
   const b = estadoBanco();

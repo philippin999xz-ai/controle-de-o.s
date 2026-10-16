@@ -40,7 +40,7 @@ Os registros do app anterior continuam aparecendo (mesmas chaves de armazenament
    (Pelo terminal: `turso auth signup` · `turso db create controle-os` · `turso db show controle-os --url` · `turso db tokens create controle-os`.)
 3. No Render → Environment, crie: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` e `APP_TOKEN` (invente uma frase longa, mín. 16 caracteres).
    As tabelas são criadas sozinhas. Faça o deploy.
-4. Em **cada aparelho**, entre como administrador e abra **Ajustes → Outros → Painel de administração → Config. → Sincronização / Turso**. Informe a `APP_TOKEN` em *Chave de acesso do aplicativo*, salve e volte ao app.
+4. Em **cada aparelho**, entre como administrador e abra **Ajustes → Outros → Painel de administração → Conexões e dados**. Informe a `APP_TOKEN` em *Chave de acesso do aplicativo*, salve e volte ao app.
    O primeiro aparelho envia todo o histórico; os outros baixam. O ícone ☁️ no topo mostra que está sincronizado.
 
 Como funciona: tudo é gravado primeiro no aparelho (funciona sem internet) e sincroniza em segundo plano ao abrir o app, ao voltar
@@ -84,8 +84,18 @@ Se um modelo não existir ou estiver fora do ar, o servidor tenta o próximo da 
 
 ## Conta e administração integradas
 
-O menu de conta fica no rodapé da lateral no desktop e no topo no celular. Login e cadastro abrem com campos vazios. O primeiro acesso permite criar o administrador; novos usuários são cadastrados por administradores, no menu ou no painel antigo, acessível em **Ajustes → Outros**.
+O menu de conta fica no rodapé da lateral no desktop e no topo no celular. Login e cadastro abrem com campos vazios. O primeiro acesso permite criar o administrador; novos usuários são cadastrados por administradores, no menu ou na nova administração, acessível em **Ajustes → Outros**.
 
 App e painel reutilizam `public/core.js`, os cadastros `os_users`/`os_cargos` e a sessão `os_sess` no sessionStorage da mesma aba. PINs existentes e seus hashes continuam compatíveis. As permissões dos cargos controlam os recursos exibidos, e novas ordens identificam quem as cadastrou. A configuração de sincronização/Turso fica somente na administração; credenciais do banco permanecem no servidor.
 
-Este é o sistema de acesso local legado: os usuários não são sincronizados entre aparelhos, e permissões no navegador não substituem autenticação e autorização na API. A sincronização de O.S. existente continua usando o acesso do aplicativo. O backend e a integração com o provedor de IA não foram alterados por esta integração visual.
+Este é o sistema de acesso local legado: os usuários não são sincronizados entre aparelhos, e permissões no navegador não substituem autenticação e autorização na API. A sincronização de O.S. existente continua usando o acesso do aplicativo. O cadastro local não fornece autenticação de usuários na API; o token de acesso existente protege as rotas quando configurado.
+
+## Administração e investigação de falhas
+
+A administração foi reconstruída em React, com visão geral, tabela de usuários, edição de acesso/PIN, cargos e permissões, conexões e backup. `public/admin.html` redireciona para `?view=admin`; o layout e os scripts do painel antigo deixaram de ser usados. Os cadastros existentes são mantidos. O login exige digitar nome e PIN, não oferece lembrar credenciais e nunca grava PINs em texto. Hashes dos cadastros legados continuam necessários para validar os usuários.
+
+**Solução de problemas** permite descrever equipamento, código e sintomas. O backend envia o pedido ao Gemini `generateContent` com a ferramenta `google_search`, e devolve a orientação e as fontes retornadas pelo provedor. Respostas sem evidência de pesquisa e sem fontes HTTPS são recusadas; não há simulação de busca em produção. A permissão usada é `perguntar_ia`. A rota `POST /api/diagnostico` reutiliza o controle de acesso por `APP_TOKEN`, valida o corpo e limita consultas a 10 por minuto por IP.
+
+Configure `GEMINI_API_KEY` somente no servidor. `DIAGNOSTICO_MODEL` é opcional (padrão `gemini-2.5-flash`) e deve selecionar um modelo disponível na conta com suporte a Google Search. A conta precisa permitir grounding/pesquisa e ter cota disponível; cobrança segue o provedor. Não reutilizamos uma resposta sem fontes como diagnóstico confirmado. A orientação é auxiliar: confirme o manual e os procedimentos de segurança antes de intervir.
+
+Validação local: `node --test backend/diagnostico.test.js` e `npm run build`. Os testes de integração do provedor usam respostas simuladas para verificar contratos, fontes e erros; eles não comprovam acesso real à internet pelo provedor. Sem credencial configurada, a rota responde `503 AI_NOT_CONFIGURED`.

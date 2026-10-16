@@ -3,8 +3,7 @@ import { core } from "../auth.js";
 import Icon from "./Icon.jsx";
 
 export function AccessForm({ mode = "login", onSuccess, onMode }) {
-  const [id, setId] = useState(""),
-    [name, setName] = useState(""),
+  const [name, setName] = useState(""),
     [pin, setPin] = useState(""),
     [repeat, setRepeat] = useState(""),
     [role, setRole] = useState("");
@@ -40,8 +39,16 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
         setRepeat("");
         onSuccess(register && !initial ? "Usuário cadastrado." : "");
       } else {
-        if (!id) throw Error("Selecione seu usuário.");
-        const result = await core().login(id, pin);
+        const user = users.find(
+          (u) =>
+            u.nome.toLocaleLowerCase("pt-BR") ===
+            name.trim().toLocaleLowerCase("pt-BR"),
+        );
+        if (!user) {
+          setPin("");
+          throw Error("Usuário ou PIN inválidos.");
+        }
+        const result = await core().login(user.id, pin);
         setPin("");
         if (!result.ok) throw Error(result.erro);
         onSuccess("");
@@ -107,22 +114,16 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
         ) : (
           <>
             <label htmlFor="access-user">Usuário</label>
-            <select
+            <input
               id="access-user"
+              name="access-identity"
               autoComplete="off"
-              value={id}
-              onChange={(e) => setId(e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Digite seu nome de usuário"
+              maxLength={60}
               required
-            >
-              <option value="" disabled>
-                Selecione seu usuário
-              </option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.nome}
-                </option>
-              ))}
-            </select>
+            />
           </>
         )}
         <label htmlFor="access-pin">{register ? "Crie um PIN" : "PIN"}</label>
@@ -236,19 +237,18 @@ export function AccountDialog({ mode, onClose, onSuccess, onMode }) {
     </dialog>
   );
 }
-export function AccountScreen({ onSuccess }) {
-  const [mode, setMode] = useState("login");
+export function AccountScreen({ onSuccess, initialMode = "login" }) {
+  const [mode, setMode] = useState(initialMode);
   return (
     <main className="access-screen">
       <div className="access-intro">
         <span>Controle O.S.</span>
         <h2>
-          O trabalho continua.
-          <br />
-          Tudo no seu lugar.
+          Foco em manutenção e operação contínua, com eficiência e agilidade.
         </h2>
         <p>
-          Ordens, equipamentos e histórico de manutenção em um único espaço.
+          Ordens, equipamentos, histórico de manutenção e solução de problemas
+          em um único espaço.
         </p>
       </div>
       <div className="access-card">
@@ -262,7 +262,14 @@ export function AccountScreen({ onSuccess }) {
     </main>
   );
 }
-export function UserMenu({ user, onAccess, onLogout, onSettings, canAdmin }) {
+export function UserMenu({
+  user,
+  onAccess,
+  onLogout,
+  onSettings,
+  onAdmin,
+  canAdmin,
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(),
     trigger = useRef();
@@ -332,9 +339,9 @@ export function UserMenu({ user, onAccess, onLogout, onSettings, canAdmin }) {
           )}
           <button onClick={() => action(onSettings)}>Ajustes e outros</button>
           {(canAdmin || core().aberto()) && (
-            <a href="./admin.html">
+            <button onClick={() => action(onAdmin)}>
               Painel de administração <Icon name="chevron" size={14} />
-            </a>
+            </button>
           )}
           {user && (
             <button className="logout-action" onClick={() => action(onLogout)}>

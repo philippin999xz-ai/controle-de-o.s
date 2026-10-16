@@ -56,3 +56,9 @@ export function erroAmigavel(e){
   const s={rede:"Sem conexão com o servidor.",tempo:"O servidor demorou demais.",ia_off:"Leitura automática indisponível (chave do Gemini não configurada no servidor).",http:"Não consegui ler a foto."};
   return e?.message||s[e?.codigo]||s.http;
 }
+
+// Pesquisa técnica com Google Search feita somente no backend. Não repete pedidos pagos.
+export async function pesquisarFalha(dados){
+ try{const r=await req("/api/diagnostico",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dados)},75000);const j=await r.json().catch(()=>({}));if(!r.ok)throw new ErroApi("diagnostico",j?.error?.message||"Não foi possível concluir a pesquisa.");return j}
+ catch(e){if(e instanceof ErroApi)throw e;throw new ErroApi("rede",e.name==="AbortError"?"A pesquisa demorou demais. Tente novamente.":"Sem conexão com o assistente. Verifique a conexão e tente novamente.")}
+}
