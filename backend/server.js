@@ -109,17 +109,23 @@ app.use(
     message: msgLimite,
   }),
 );
-// Sincronização: muitas chamadas pequenas (fotos do histórico).
+// Pesquisa na IA tem limite próprio; leituras do histórico não consomem esse limite.
 app.use(
   "/api/diagnostico",
   rateLimit({
     windowMs: 60_000,
     limit: 10,
+    skip: (req) => req.method !== "POST",
     standardHeaders: "draft-7",
     legacyHeaders: false,
     message: msgLimite,
   }),
 );
+app.use("/api/diagnostico/historico", rateLimit({
+  windowMs: 60_000, limit: 120,
+  standardHeaders: "draft-7", legacyHeaders: false, message: msgLimite,
+}));
+// Sincronização: muitas chamadas pequenas (fotos do histórico).
 app.use(
   "/api/sync",
   rateLimit({
@@ -343,7 +349,7 @@ app.post(
 
 app.use(
   "/api/diagnostico",
-  limiteChave,
+  (req, res, next) => req.method === "POST" ? limiteChave(req, res, next) : next(),
   exigirToken,
   identity.need("perguntar_ia"),
   diagnosticRouter({

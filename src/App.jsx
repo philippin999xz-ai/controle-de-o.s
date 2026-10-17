@@ -16,6 +16,7 @@ import OrdersTable from "./components/OrdersTable.jsx";
 import Icon from "./components/Icon.jsx";
 import AdminPanel from "./components/AdminPanel.jsx";
 import Diagnostico from "./components/Diagnostico.jsx";
+import useAutoLoad from "./hooks/useAutoLoad.js";
 import { useAccount, core } from "./auth.js";
 import {
   AccountDialog,
@@ -167,13 +168,16 @@ export default function App() {
   const busca = q.trim().toLowerCase(),
     achados = busca
       ? vis.filter((r) => JSON.stringify(r).toLowerCase().includes(busca))
-      : [];
+      : vis;
   const filtrados = vis.filter(
     (r) =>
       (!busca || JSON.stringify(r).toLowerCase().includes(busca)) &&
       (!tipo || r.tipo_manutencao === tipo) &&
       (!equip || r.equipamento === equip),
   );
+  useEffect(() => { setLim(PAGINA); }, [q, tipo, equip, tab]);
+  const totalVisible = tab === "pesq" ? achados.length : filtrados.length;
+  const moreOrders = useAutoLoad((tab === "hist" || tab === "pesq") && totalVisible > lim, () => setLim((n) => n + PAGINA), [tab, lim, totalVisible]);
   const nova = () => {
     if (!account.can("criar_os")) return;
     setEdit(null);
@@ -421,9 +425,9 @@ export default function App() {
                   onChange={(e) => setQ(e.target.value)}
                 />
               </div>
-              {busca ? (
+              {achados.length ? (
                 <OrdersTable
-                  items={achados}
+                  items={achados.slice(0, lim)}
                   onEdit={account.can("editar_os") ? editar : undefined}
                   onDel={account.can("excluir_os") ? del : undefined}
                   onCreate={account.can("criar_os") ? nova : undefined}
@@ -432,9 +436,10 @@ export default function App() {
                 <div className="empty-state">
                   <Icon name="search" size={30} />
                   <h3>O histórico ao seu alcance</h3>
-                  <p>Digite um número, equipamento ou serviço para começar.</p>
+                  <p>Nenhuma ordem corresponde à pesquisa.</p>
                 </div>
               )}
+              <div ref={moreOrders} className="mut" role="status">{achados.length > lim ? "Carregando mais ordens…" : `${achados.length} ordens encontradas`}</div>
             </section>
           )}
           {tab === "hist" && allowed("hist") && (
@@ -572,14 +577,7 @@ export default function App() {
                       ? `Exibindo ${Math.min(lim, filtrados.length)} de ${filtrados.length} ordens`
                       : "0 ordens encontradas"}
                   </span>
-                  {filtrados.length > lim && (
-                    <button
-                      className="sec"
-                      onClick={() => setLim((l) => l + PAGINA)}
-                    >
-                      Mostrar mais
-                    </button>
-                  )}
+                  <span ref={moreOrders} role="status">{filtrados.length > lim ? "Carregando mais ordens…" : ""}</span>
                   <span>Dados do seu histórico</span>
                 </div>
               </section>

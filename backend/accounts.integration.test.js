@@ -84,6 +84,16 @@ test("central identities, authorization, shared data, revocation and restart per
         assert.ok(!JSON.stringify(snapshot).includes("123456"));
       },
     );
+    await t.test("history reads do not consume the AI search rate limit", async () => {
+      for (let i = 0; i < 12; i++) {
+        const response = await call(a.base, "/api/diagnostico/historico", { token: admin.token });
+        assert.equal(response.status, 200);
+      }
+      assert.equal((await call(a.base, "/api/diagnostico", {
+        method: "POST", token: admin.token,
+        body: { sintoma: "Motor com vibração durante a operação" },
+      })).status, 503, "must reach provider configuration check, not a quota error");
+    });
     let worker;
     await t.test(
       "a user created on server A can sign in on independent server B",

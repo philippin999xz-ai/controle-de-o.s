@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { pesquisarFalha, historicoFalhas, abrirPesquisa } from "../api.js";
+import useAutoLoad from "../hooks/useAutoLoad.js";
 import Icon from "./Icon.jsx";
 export default function Diagnostico() {
   const [equipamento, setEquipamento] = useState(""),
@@ -13,7 +14,12 @@ export default function Diagnostico() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const alive = useRef(true);
+  const loadingHistory = useRef(false);
+  const historyList = useRef(null);
+  const moreHistory = useAutoLoad(nextPage !== null && !historyBusy && !historyError, () => loadHistory(nextPage), [nextPage, historyBusy, historyError]);
   async function loadHistory(offset = 0) {
+    if (loadingHistory.current) return;
+    loadingHistory.current = true;
     setHistoryBusy(true);
     setHistoryError("");
     try {
@@ -24,6 +30,7 @@ export default function Diagnostico() {
     } catch (e) {
       if (alive.current) setHistoryError(e.message);
     } finally {
+      loadingHistory.current = false;
       if (alive.current) setHistoryBusy(false);
     }
   }
@@ -47,8 +54,19 @@ export default function Diagnostico() {
   useEffect(() => {
     alive.current = true;
     loadHistory();
+    const refresh = () => {
+      if (document.visibilityState === "visible" && navigator.onLine && (!historyList.current || historyList.current.scrollTop < 10)) loadHistory();
+    };
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       alive.current = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
     };
   }, []);
   async function submit(e) {
@@ -129,12 +147,12 @@ export default function Diagnostico() {
         <div className="diagnostic-history">
           <div className="section-heading">
             <h3>Minhas pesquisas</h3>
-            <button type="button" className="secondary" disabled={historyBusy || busy} onClick={() => loadHistory()}>Atualizar</button>
+            <small className="mut">Atualização automática</small>
           </div>
           <p className="mut">Seu histórico pessoal, disponível no celular e na web. Abrir uma pesquisa não consulta a IA novamente.</p>
           {historyError && <p role="alert">{historyError}</p>}
           {!history.length && !historyBusy && !historyError && <p className="mut">Suas próximas pesquisas aparecerão aqui.</p>}
-          <ul>
+          <ul ref={historyList}>
             {history.map((item) => <li key={item.id}>
               <button type="button" disabled={busy} onClick={() => openHistory(item.id)}>
                 <strong>{item.equipamento || "Equipamento não informado"}{item.codigo ? ` · ${item.codigo}` : ""}</strong>
@@ -142,9 +160,10 @@ export default function Diagnostico() {
                 <small>{new Date(item.criado_em).toLocaleString("pt-BR")}</small>
               </button>
             </li>)}
+            <li ref={moreHistory} aria-hidden="true" style={{ height: 1 }} />
           </ul>
           {historyBusy && <p role="status">Carregando histórico…</p>}
-          {nextPage !== null && <button type="button" className="secondary" disabled={historyBusy || busy} onClick={() => loadHistory(nextPage)}>Carregar mais</button>}
+
         </div>
       </section>
       <section
