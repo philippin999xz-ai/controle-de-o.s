@@ -125,7 +125,7 @@ export function erroAmigavel(e) {
     rede: "Sem conexão com o servidor.",
     tempo: "O servidor demorou demais.",
     ia_off:
-      "Leitura automática indisponível (GROQ_API_KEY não configurada no servidor).",
+      "Leitura automática indisponível. Configure um provedor de imagens no Render.",
     http: "Não consegui ler a foto.",
   };
   return e?.message || s[e?.codigo] || s.http;

@@ -589,7 +589,7 @@ export default function AdminPanel({
               </span>
             </div>
             <div className="service-status">
-              <span>Assistente e leitura por IA</span>
+              <span>Leitura de imagens por IA</span>
               <span className="neutral-pill">
                 {health?.ok
                   ? health.ai
@@ -608,6 +608,15 @@ export default function AdminPanel({
                   : "Não verificada"}
               </span>
             </div>
+            <div className="service-status">
+              <span>Pesquisa de falhas com fontes</span>
+              <span className="neutral-pill">{health?.ok ? health.research ? "Configurada" : "Não configurada" : "Não verificada"}</span>
+            </div>
+            {health?.providers?.map((p) => <div className="service-status" key={p.nome}>
+              <span>{({ groq: "Groq", gemini: "Google Gemini", openrouter: "OpenRouter gratuito", cerebras: "Cerebras", huggingface: "Hugging Face" })[p.nome] || p.nome}</span>
+              <span className="neutral-pill">{p.emPausa ? "Em pausa temporária" : [p.imagens && "Imagens", p.pesquisa && "Pesquisa"].filter(Boolean).join(" · ")}</span>
+            </div>)}
+            {health?.ok && health.providers?.length < 2 && <p className="mut">Somente um provedor está configurado. Adicione chaves alternativas no Render para habilitar a troca automática.</p>}
             <p className="mut">
               As chaves do provedor de IA e as credenciais do banco são
               configuradas somente no servidor.

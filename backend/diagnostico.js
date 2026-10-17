@@ -81,6 +81,7 @@ export function diagnosticRouter({
   fetchImpl = fetch,
   logger = console,
   db,
+  research,
 }) {
   const router = express.Router();
   router.get("/historico", async (req, res) => {
@@ -131,100 +132,105 @@ export function diagnosticRouter({
       });
     try {
       const q = parsed.data;
-      const requestOptions = {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: SYSTEM },
-              { role: "user", content: JSON.stringify(q) },
-            ],
-            tools: [{ type: "browser_search" }],
-            tool_choice: "required",
-            reasoning_effort: "low", // recomendado pelo Groq: raciocínio alto gera buscas longas e muitos tokens
-            max_completion_tokens: 6000,
-          }),
-          signal: AbortSignal.timeout(60000),
-      };
-      // Um único orçamento de 60s inclui as duas tentativas. Nunca repete
-      // respostas bem-sucedidas, erros de autenticação, configuração ou cota.
-      let response;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        response = await fetchImpl(
-          `${baseURL.replace(/\/$/, "")}/chat/completions`,
-          requestOptions,
-        );
-        if (attempt === 0 && [500, 502, 503, 504].includes(response.status)) {
-          logger.warn("[diagnostico] nova tentativa após erro do provedor", { status: response.status });
-          await response.body?.cancel();
-          await new Promise((resolve) => setTimeout(resolve, 700));
-          continue;
+      let result;
+      if (research) {
+        result = await research({ question: q, system: SYSTEM });
+      } else {
+        const requestOptions = {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: SYSTEM },
+                { role: "user", content: JSON.stringify(q) },
+              ],
+              tools: [{ type: "browser_search" }],
+              tool_choice: "required",
+              reasoning_effort: "low", // recomendado pelo Groq: raciocínio alto gera buscas longas e muitos tokens
+              max_completion_tokens: 6000,
+            }),
+            signal: AbortSignal.timeout(60000),
+        };
+        // Um único orçamento de 60s inclui as duas tentativas. Nunca repete
+        // respostas bem-sucedidas, erros de autenticação, configuração ou cota.
+        let response;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          response = await fetchImpl(
+            `${baseURL.replace(/\/$/, "")}/chat/completions`,
+            requestOptions,
+          );
+          if (attempt === 0 && [500, 502, 503, 504].includes(response.status)) {
+            logger.warn("[diagnostico] nova tentativa após erro do provedor", { status: response.status });
+            await response.body?.cancel();
+            await new Promise((resolve) => setTimeout(resolve, 700));
+            continue;
+          }
+          break;
         }
-        break;
-      }
-      if (!response.ok) {
-        let upstream = {};
-        try { upstream = await response.json(); } catch {}
-        const code = String(upstream?.error?.code || "");
-        const detail = String(upstream?.error?.message || "");
-        let category = "SEARCH_PROVIDER_ERROR";
-        let message = response.status >= 500
-          ? `O Groq retornou erro interno (HTTP ${response.status}) mesmo após uma nova tentativa. Tente novamente em instantes.`
-          : "O Groq recusou a pesquisa. Solicite a verificação do serviço à administração.";
-        if (response.status === 401 || response.status === 403) {
-          category = "SEARCH_PROVIDER_AUTH";
-          message = "O Groq recusou o acesso. A administração deve verificar a chave e as permissões no Render.";
-        } else if (response.status === 429) {
-          category = "SEARCH_PROVIDER_LIMIT";
-          message = "Limite de pesquisas atingido. Aguarde antes de tentar novamente.";
-        } else if (/model_not_found|model_decommissioned|model.*(?:not found|does not exist|decommissioned|not supported)/i.test(code + " " + detail)) {
-          category = "SEARCH_MODEL_UNAVAILABLE";
-          message = "O modelo de pesquisa não está disponível no Groq. A administração deve verificar DIAGNOSTICO_MODEL no Render.";
-        } else if (response.status === 400 || response.status === 422) {
-          category = "SEARCH_REQUEST_REJECTED";
-          message = "O Groq recusou a configuração da pesquisa. A administração deve conferir a compatibilidade do modelo com browser_search e os parâmetros enviados.";
+        if (!response.ok) {
+          let upstream = {};
+          try { upstream = await response.json(); } catch {}
+          const code = String(upstream?.error?.code || "");
+          const detail = String(upstream?.error?.message || "");
+          let category = "SEARCH_PROVIDER_ERROR";
+          let message = response.status >= 500
+            ? `O Groq retornou erro interno (HTTP ${response.status}) mesmo após uma nova tentativa. Tente novamente em instantes.`
+            : "O Groq recusou a pesquisa. Solicite a verificação do serviço à administração.";
+          if (response.status === 401 || response.status === 403) {
+            category = "SEARCH_PROVIDER_AUTH";
+            message = "O Groq recusou o acesso. A administração deve verificar a chave e as permissões no Render.";
+          } else if (response.status === 429) {
+            category = "SEARCH_PROVIDER_LIMIT";
+            message = "Limite de pesquisas atingido. Aguarde antes de tentar novamente.";
+          } else if (/model_not_found|model_decommissioned|model.*(?:not found|does not exist|decommissioned|not supported)/i.test(code + " " + detail)) {
+            category = "SEARCH_MODEL_UNAVAILABLE";
+            message = "O modelo de pesquisa não está disponível no Groq. A administração deve verificar DIAGNOSTICO_MODEL no Render.";
+          } else if (response.status === 400 || response.status === 422) {
+            category = "SEARCH_REQUEST_REJECTED";
+            message = "O Groq recusou a configuração da pesquisa. A administração deve conferir a compatibilidade do modelo com browser_search e os parâmetros enviados.";
+          }
+          // Nunca registre o corpo do provedor, perguntas ou credenciais.
+          logger.warn("[diagnostico] falha no provedor", {
+            status: response.status,
+            category,
+            model: /^[a-zA-Z0-9/_.-]{1,120}$/.test(model) ? model : "configurado",
+          });
+          return res.status(response.status === 429 ? 429 : 502).json({
+            error: { code: category, message },
+          });
         }
-        // Nunca registre o corpo do provedor, perguntas ou credenciais.
-        logger.warn("[diagnostico] falha no provedor", {
-          status: response.status,
-          category,
-          model: /^[a-zA-Z0-9/_.-]{1,120}$/.test(model) ? model : "configurado",
-        });
-        return res.status(response.status === 429 ? 429 : 502).json({
-          error: { code: category, message },
-        });
-      }
-      const json = await response.json();
-      if (json?.choices?.[0]?.finish_reason === "length") {
-        logger.warn("[diagnostico] resposta interrompida pelo limite de tokens");
-        return res.status(422).json({
-          error: {
-            code: "SEARCH_INCOMPLETE",
-            message: "A pesquisa foi interrompida antes de concluir a orientação. Tente novamente com o modelo, o código exato do visor e um sintoma específico.",
-          },
-        });
-      }
-      const message = json?.choices?.[0]?.message;
-      const result = normalizeGrounded(message);
-      if (!result) {
-        // Só o formato (nomes de campos), nunca o conteúdo: ajuda a ajustar a leitura se o Groq mudar a resposta.
-        console.warn(
-          "[diagnostico] resposta sem fontes verificáveis. campos:",
-          Object.keys(message || {}).join(","),
-          "· ferramentas:",
-          (message?.executed_tools || []).map((t) => t?.type).join(",") || "nenhuma",
-        );
-        return res.status(422).json({
-          error: {
-            code: "SEARCH_NOT_GROUNDED",
-            message:
-              "A pesquisa não trouxe fontes verificáveis. Informe a marca, o modelo e mais detalhes da falha para tentar novamente.",
-          },
-        });
+        const json = await response.json();
+        if (json?.choices?.[0]?.finish_reason === "length") {
+          logger.warn("[diagnostico] resposta interrompida pelo limite de tokens");
+          return res.status(422).json({
+            error: {
+              code: "SEARCH_INCOMPLETE",
+              message: "A pesquisa foi interrompida antes de concluir a orientação. Tente novamente com o modelo, o código exato do visor e um sintoma específico.",
+            },
+          });
+        }
+        const message = json?.choices?.[0]?.message;
+        result = normalizeGrounded(message);
+        if (!result) {
+          // Só o formato (nomes de campos), nunca o conteúdo: ajuda a ajustar a leitura se o Groq mudar a resposta.
+          console.warn(
+            "[diagnostico] resposta sem fontes verificáveis. campos:",
+            Object.keys(message || {}).join(","),
+            "· ferramentas:",
+            (message?.executed_tools || []).map((t) => t?.type).join(",") || "nenhuma",
+          );
+          return res.status(422).json({
+            error: {
+              code: "SEARCH_NOT_GROUNDED",
+              message:
+                "A pesquisa não trouxe fontes verificáveis. Informe a marca, o modelo e mais detalhes da falha para tentar novamente.",
+            },
+          });
+        }
       }
       if (db && req.user?.id) {
         try {
@@ -242,6 +248,10 @@ export function diagnosticRouter({
       }
       res.set("Cache-Control", "no-store").json(result);
     } catch (error) {
+      if (["AI_PROVIDERS_UNAVAILABLE", "AI_NOT_CONFIGURED"].includes(error.code)) {
+        if (error.status === 429) res.set("Retry-After", String(error.retryAfter));
+        return res.status(error.status).json({ error: { code: error.code, message: error.message, retryAfter: error.retryAfter } });
+      }
       next(error);
     }
   });

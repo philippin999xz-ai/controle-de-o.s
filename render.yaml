@@ -11,6 +11,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      # Alternativas opcionais (Gemini/OpenRouter/Cerebras/HF e Tavily):
+      # adicione apenas as chaves disponíveis no painel. Guia: docs/ia-gratuita.md.
+      # Não são obrigatórias para criar o serviço.
       - key: GROQ_API_KEY
         sync: false                 # cole a chave no painel do Render (nunca no código)
       - key: TURSO_DATABASE_URL

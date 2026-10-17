@@ -26,6 +26,11 @@ async function start(url, admin = true) {
         ADMIN_NAME: admin ? "Central Admin" : "",
         ADMIN_PIN: admin ? "123456" : "",
         GROQ_API_KEY: "",
+        GEMINI_API_KEY: "",
+        OPENROUTER_API_KEY: "",
+        CEREBRAS_API_KEY: "",
+        HF_TOKEN: "",
+        TAVILY_API_KEY: "",
       },
       stdio: "ignore",
     });

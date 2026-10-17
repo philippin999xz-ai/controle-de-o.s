@@ -1,3 +1,4 @@
+import { createAiGateway, AiUnavailable } from "./ai-providers.js";
 // Servidor único: API de IA (/api/*) + front React compilado (../dist).
 // Se ../dist não existir, responde só a API (modo "backend separado").
 import express from "express";
@@ -7,7 +8,6 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { PROMPT_OS, SCHEMA_OS, DICA_JSON, normalizarResultado } from "./ler-os.js";
 import {
   conectarBanco,
   garantirBanco,
@@ -27,21 +27,7 @@ const DIST = path.resolve(
 const TEM_FRONT = existsSync(path.join(DIST, "index.html"));
 
 const PORT = Number(process.env.PORT || 10000);
-const GROQ_API_KEY = (process.env.GROQ_API_KEY || "").trim();
-const GROQ_URL = (
-  process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1"
-).replace(/\/$/, "");
-// Modelos com visão, na ordem de tentativa; se um não existir/estiver fora do ar, usa o próximo. (GROQ_MODELS="a,b")
-const MODELOS = (
-  process.env.GROQ_MODELS ||
-  process.env.GROQ_MODEL ||
-  "qwen/qwen3.8-27b"
-)
-  .split(",")
-  .map((x) => x.trim())
-  .filter(Boolean);
-// "none" = modo direto (sem raciocínio): mais rápido e gasta menos cota. "default"/"low"/"medium"/"high" ligam o raciocínio; vazio = não enviar.
-const REASONING = (process.env.GROQ_REASONING ?? "none").trim();
+const aiGateway = createAiGateway();
 const SYNC_OK = () => Boolean(obterBanco());
 const identity = accounts({
   db: obterBanco,
@@ -158,9 +144,10 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     service: "controle-os",
-    ai: Boolean(GROQ_API_KEY),
-    provider: "groq",
-    models: MODELOS,
+    ai: aiGateway.configured("vision"),
+    research: aiGateway.configured("search"),
+    providers: aiGateway.status(),
+    provider: "automatic",
     front: TEM_FRONT,
     auth: true,
     central: true,
@@ -188,161 +175,17 @@ const FotoSchema = z
   })
   .strict();
 
-// Chamada à API do Groq (compatível com OpenAI). Variantes, da mais precisa para a mais simples,
-// para o caso de o modelo não aceitar json_schema ou reasoning_effort: só avançamos em erro 400 desses parâmetros.
-const VARIANTES = [
-  { schema: true, razao: true },
-  { schema: true, razao: false },
-  { schema: false, razao: false },
-];
-
-async function chamarGroq(model, foto, v) {
-  const corpo = {
-    model,
-    messages: [
-      {
-        role: "system",
-        content: PROMPT_OS + (v.schema ? "" : "\n\n" + DICA_JSON),
-      },
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Leia esta O.S. e responda somente com o JSON." },
-          {
-            type: "image_url",
-            image_url: { url: `data:${foto.mime};base64,${foto.image}` },
-          },
-        ],
-      },
-    ],
-    temperature: 0,
-    max_completion_tokens: 1500,
-    response_format: v.schema
-      ? {
-          type: "json_schema",
-          json_schema: { name: "leitura_os", strict: false, schema: SCHEMA_OS },
-        }
-      : { type: "json_object" },
-  };
-  if (v.razao && REASONING) corpo.reasoning_effort = REASONING;
-  const r = await fetch(`${GROQ_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify(corpo),
-    signal: AbortSignal.timeout(60_000),
-  });
-  const bruto = await r.text();
-  let json;
-  try {
-    json = JSON.parse(bruto);
-  } catch {
-    json = {};
-  }
-  return { r, json, bruto };
-}
-
-async function chamarComVariantes(model, foto) {
-  let t;
-  for (const v of VARIANTES) {
-    if (v.razao && !REASONING) continue;
-    t = await chamarGroq(model, foto, v);
-    const msg = t.json?.error?.message || "";
-    // 400 por parâmetro não suportado: tenta a próxima variante. Qualquer outra resposta encerra.
-    if (
-      t.r.status === 400 &&
-      /reasoning|response_format|json_schema|schema|strict/i.test(msg)
-    )
-      continue;
-    return t;
-  }
-  return t;
-}
-
 app.post(
-  "/api/ler-os",
-  limiteChave,
-  exigirToken,
-  identity.need("usar_ia"),
+  "/api/ler-os", limiteChave, exigirToken, identity.need("usar_ia"),
   async (req, res, next) => {
+    const parsed = FotoSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: { code: "INVALID_INPUT", message: "Foto inválida." } });
     try {
-      if (!GROQ_API_KEY) {
-        return res.status(503).json({
-          error: {
-            code: "AI_NOT_CONFIGURED",
-            message: "IA não configurada no servidor (GROQ_API_KEY).",
-          },
-        });
-      }
-      const v = FotoSchema.safeParse(req.body);
-      if (!v.success)
-        return res.status(400).json({
-          error: { code: "INVALID_INPUT", message: "Foto inválida." },
-        });
-
-      let ultimo = null;
-      for (const model of MODELOS) {
-        const t = await chamarComVariantes(model, v.data);
-
-        if (t.r.ok) {
-          const texto = String(t.json?.choices?.[0]?.message?.content || "");
-          let dados;
-          try {
-            dados = JSON.parse(
-              texto
-                .replace(/<think>[\s\S]*?<\/think>/gi, "")
-                .replace(/```json|```/gi, "")
-                .trim(),
-            );
-          } catch {
-            dados = null;
-          }
-          if (!dados) {
-            ultimo = {
-              status: 502,
-              code: "AI_BAD_OUTPUT",
-              message: "A IA respondeu fora do formato.",
-            };
-            continue;
-          }
-          if (t.json.usage)
-            console.log(
-              `[ler-os] ${model} uso=${JSON.stringify(t.json.usage)}`,
-            );
-          return res.json(normalizarResultado(dados));
-        }
-        const msg = t.json?.error?.message || "Falha no provedor de IA.";
-        console.error("[groq]", model, t.r.status, msg.slice(0, 200));
-        if (t.r.status === 401 || t.r.status === 403) {
-          return res.status(502).json({
-            error: {
-              code: "AI_PROVIDER_ERROR",
-              message:
-                "Chave do Groq inválida ou sem permissão (confira GROQ_API_KEY no Render).",
-            },
-          });
-        }
-        ultimo = {
-          status: t.r.status >= 500 ? 502 : t.r.status,
-          code: "AI_PROVIDER_ERROR",
-          message:
-            t.r.status === 429
-              ? "Limite gratuito do Groq atingido. Tente em instantes."
-              : msg,
-        };
-        // 400 sem relação com modelo = foto/pedido ruim: não adianta trocar de modelo.
-        if (t.r.status === 400 && !/model/i.test(msg)) break;
-      }
-      return res.status(ultimo?.status || 502).json({
-        error: {
-          code: ultimo?.code || "AI_PROVIDER_ERROR",
-          message: ultimo?.message || "Falha no provedor de IA.",
-        },
-      });
-    } catch (err) {
-      return next(err);
+      res.set("Cache-Control", "no-store").json(await aiGateway.vision(parsed.data));
+    } catch (error) {
+      if (!(error instanceof AiUnavailable)) return next(error);
+      if (error.status === 429) res.set("Retry-After", String(error.retryAfter));
+      res.status(error.status).json({ error: { code: error.code, message: error.message, retryAfter: error.retryAfter } });
     }
   },
 );
@@ -354,9 +197,8 @@ app.use(
   identity.need("perguntar_ia"),
   diagnosticRouter({
     db: obterBanco,
-    apiKey: GROQ_API_KEY,
-    baseURL: GROQ_URL,
-    model: process.env.DIAGNOSTICO_MODEL || "openai/gpt-oss-120b",
+    apiKey: aiGateway.configured("search") ? "configured-on-server" : "",
+    research: aiGateway.research,
   }),
 );
 
@@ -461,6 +303,6 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(
-    `controle-os na porta ${PORT} · front: ${TEM_FRONT ? DIST : "NÃO ENCONTRADO"} · IA: ${GROQ_API_KEY ? "Groq " + MODELOS.join(" > ") : "sem chave"} · nuvem: ${estadoBanco().configurado ? "centralizada" : "desligada"}`,
+    `controle-os na porta ${PORT} · front: ${TEM_FRONT ? DIST : "NÃO ENCONTRADO"} · IA: ${aiGateway.status().map((p) => p.nome).join(" > ") || "sem chave"} · nuvem: ${estadoBanco().configurado ? "centralizada" : "desligada"}`,
   );
 });

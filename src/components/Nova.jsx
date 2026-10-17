@@ -51,7 +51,7 @@ export default function Nova({
       if (!st.ai)
         throw new ErroApi(
           "ia_off",
-          "IA não configurada no servidor (GROQ_API_KEY no Render).",
+          "Nenhum provedor de leitura de imagens configurado no servidor.",
         );
       setMsg("🤖 Lendo a foto da OS...");
       const { campos, incertos } = await lerOS(
