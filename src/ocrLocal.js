@@ -28,7 +28,7 @@ async function prepararParaOCR(blob){
 }
 
 // =====================================================================
-//  OCR LOCAL (Tesseract) — usado só como reserva (sem chave ou se o Gemini falhar)
+//  OCR LOCAL (Tesseract) — usado só como reserva (sem chave ou se a IA falhar)
 // =====================================================================
 let ocrWorker=null;
 async function obterOCRWorker(){

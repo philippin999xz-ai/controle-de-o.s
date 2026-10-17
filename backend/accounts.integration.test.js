@@ -25,7 +25,7 @@ async function start(url) {
         TURSO_AUTH_TOKEN: "",
         ADMIN_NAME: "Central Admin",
         ADMIN_PIN: "123456",
-        GEMINI_API_KEY: "",
+        GROQ_API_KEY: "",
       },
       stdio: "ignore",
     });

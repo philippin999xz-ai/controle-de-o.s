@@ -51,7 +51,7 @@ export default function Nova({
       if (!st.ai)
         throw new ErroApi(
           "ia_off",
-          "IA não configurada no servidor (GEMINI_API_KEY no Render).",
+          "IA não configurada no servidor (GROQ_API_KEY no Render).",
         );
       setMsg("🤖 Lendo a foto da OS...");
       const { campos, incertos } = await lerOS(

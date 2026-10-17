@@ -2,25 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import { diagnosticRouter, normalizeGrounded } from "./diagnostico.js";
-const candidate = {
-  content: {
-    parts: [
-      {
-        text: "Hipótese: falha de ventilação. Consulte o manual antes de intervir.",
+const message = {
+  content: "Hipótese: falha de ventilação. Consulte o manual antes de intervir.",
+  executed_tools: [
+    {
+      type: "search",
+      arguments: JSON.stringify({ query: "motor falha ventilação manual fabricante" }),
+      search_results: {
+        results: [{ title: "Manual do fabricante", url: "https://example.com/manual" }],
       },
-    ],
-  },
-  groundingMetadata: {
-    webSearchQueries: ["motor falha ventilação manual fabricante"],
-    groundingChunks: [
-      {
-        web: {
-          title: "Manual do fabricante",
-          uri: "https://example.com/manual",
-        },
-      },
-    ],
-  },
+    },
+  ],
 };
 async function withAPI(options, run) {
   const app = express();
@@ -46,33 +38,32 @@ const question = {
   sintoma: "A temperatura sobe durante a operação.",
 };
 test("requires evidence of web search and usable sources", () => {
-  assert.equal(
-    normalizeGrounded({ ...candidate, groundingMetadata: {} }),
-    null,
-  );
+  assert.equal(normalizeGrounded({ ...message, executed_tools: [] }), null);
   assert.equal(
     normalizeGrounded({
-      ...candidate,
-      groundingMetadata: {
-        ...candidate.groundingMetadata,
-        webSearchQueries: [],
-      },
+      ...message,
+      executed_tools: [{ ...message.executed_tools[0], arguments: "{}" }],
     }),
     null,
   );
   assert.equal(
     normalizeGrounded({
-      ...candidate,
-      groundingMetadata: {
-        ...candidate.groundingMetadata,
-        groundingChunks: [{ web: { uri: "javascript:alert(1)" } }],
-      },
+      ...message,
+      executed_tools: [
+        {
+          ...message.executed_tools[0],
+          search_results: { results: [{ url: "javascript:alert(1)" }] },
+        },
+      ],
     }),
     null,
   );
   assert.equal(
-    normalizeGrounded(candidate).fontes[0].titulo,
+    normalizeGrounded(message).fontes[0].titulo,
     "Manual do fabricante",
+  );
+  assert.ok(
+    !normalizeGrounded({ ...message, content: "Texto【2†L6-L10】 final" }).resposta.includes("【"),
   );
 });
 test("validates input and reports missing configuration without invoking the provider", async () => {
@@ -88,7 +79,7 @@ test("validates input and reports missing configuration without invoking the pro
     assert.equal((await request(question)).status, 503);
   });
 });
-test("enables Google Search on server and returns real provider metadata", async () => {
+test("enables web search on server and returns real provider metadata", async () => {
   let called = false;
   await withAPI(
     {
@@ -96,13 +87,12 @@ test("enables Google Search on server and returns real provider metadata", async
       fetchImpl: async (url, options) => {
         called = true;
         const body = JSON.parse(options.body);
-        assert.match(url, /models\/gemini-2.5-flash:generateContent$/);
-        assert.deepEqual(body.tools, [{ google_search: {} }]);
-        assert.equal(
-          JSON.parse(body.contents[0].parts[0].text).sintoma,
-          question.sintoma,
-        );
-        return new Response(JSON.stringify({ candidates: [candidate] }), {
+        assert.match(url, /\/chat\/completions$/);
+        assert.equal(options.headers.Authorization, "Bearer test-only-not-a-credential");
+        assert.equal(body.model, "openai/gpt-oss-120b");
+        assert.deepEqual(body.tools, [{ type: "browser_search" }]);
+        assert.equal(JSON.parse(body.messages[1].content).sintoma, question.sintoma);
+        return new Response(JSON.stringify({ choices: [{ message }] }), {
           status: 200,
         });
       },
@@ -112,7 +102,7 @@ test("enables Google Search on server and returns real provider metadata", async
       assert.equal(response.status, 200);
       const json = await response.json();
       assert.equal(json.fontes[0].url, "https://example.com/manual");
-      assert.equal(json.resposta, candidate.content.parts[0].text);
+      assert.equal(json.resposta, message.content);
       assert.ok(!JSON.stringify(json).includes("test-only-not-a-credential"));
       assert.ok(json.pesquisadoEm);
     },
@@ -125,7 +115,7 @@ test("rejects an answer without grounded sources", async () => {
       apiKey: "test",
       fetchImpl: async () =>
         new Response(
-          JSON.stringify({ candidates: [{ content: candidate.content }] }),
+          JSON.stringify({ choices: [{ message: { content: message.content } }] }),
         ),
     },
     async (request) => {

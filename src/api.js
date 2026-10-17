@@ -67,7 +67,7 @@ export async function acordar(onStatus = () => {}) {
   return { ok: false, ai: false };
 }
 
-// Envia só a foto (base64). O servidor tem o prompt e a chave do Gemini e devolve {campos, incertos}.
+// Envia só a foto (base64). O servidor tem o prompt e a chave do Groq e devolve {campos, incertos}.
 export async function lerOS(image, mime = "image/jpeg") {
   let ultimo = null;
   for (let tent = 0; tent < 3; tent++) {
@@ -88,7 +88,7 @@ export async function lerOS(image, mime = "image/jpeg") {
           new ErroApi(
             "auth",
             j?.error?.message ||
-              "Chave de acesso inválida. Informe em Ajustes.",
+              "Sessão expirada ou sem permissão. Entre novamente.",
           ),
           { fatal: true },
         );
@@ -125,13 +125,13 @@ export function erroAmigavel(e) {
     rede: "Sem conexão com o servidor.",
     tempo: "O servidor demorou demais.",
     ia_off:
-      "Leitura automática indisponível (chave do Gemini não configurada no servidor).",
+      "Leitura automática indisponível (GROQ_API_KEY não configurada no servidor).",
     http: "Não consegui ler a foto.",
   };
   return e?.message || s[e?.codigo] || s.http;
 }
 
-// Pesquisa técnica com Google Search feita somente no backend. Não repete pedidos pagos.
+// Pesquisa técnica com busca na web feita somente no backend. Não repete pedidos pagos.
 export async function pesquisarFalha(dados) {
   try {
     const r = await req(

@@ -1,5 +1,5 @@
-// Tudo da leitura de O.S. fica NO SERVIDOR (Gemini): prompt, schema e limpeza do resultado.
-// O front só envia a foto; ninguém consegue usar a sua chave para outra coisa.
+// Tudo da leitura de O.S. fica NO SERVIDOR (Groq): prompt, schema e limpeza do resultado.
+// O front só envia a foto; a chave do Groq nunca sai do servidor.
 export const KEYS = ["numero_os", "equipamento", "servico_solicitado", "executante", "tipo_manutencao", "observacoes"];
 const TIPOS = ["Corretiva", "Preventiva", "Preditiva", "Melhoria"];
 
@@ -20,7 +20,7 @@ CAMPOS:
 
 REGRAS: use só o que está na imagem, sem inventar nem completar. Ausente ou ilegível = "" e liste o campo em "incertos". Em letra manuscrita faça a melhor leitura e liste em "incertos" só o campo com dúvida real (dígitos 1/7, 4/9, 6/0, 2/3 no número da O.S. contam). Preserve códigos, nomes e acentos; não traduza.`;
 
-// Schema da resposta (JSON Schema aceito pelo Gemini). Sem "transcricao": era a maior fonte de token de saída.
+// Schema da resposta (JSON Schema aceito pelo Groq). Sem "transcricao": era a maior fonte de token de saída.
 export const SCHEMA_OS = {
   type: "object",
   properties: {
@@ -33,7 +33,11 @@ export const SCHEMA_OS = {
     incertos: { type: "array", description: "Campos vazios ou com leitura duvidosa.", items: { type: "string", enum: KEYS } },
   },
   required: [...KEYS, "incertos"],
+  additionalProperties: false,
 };
+
+// Usada só quando o modelo não aceita json_schema (modo json_object não impõe o formato).
+export const DICA_JSON = `Responda SOMENTE com um objeto JSON com exatamente estas chaves: ${KEYS.map((k) => `"${k}"`).join(", ")} (todas strings) e "incertos" (lista com os nomes dos campos vazios ou duvidosos).`;
 
 // Limpeza determinística (grátis, sem token): padroniza e marca para conferir o que parece estranho.
 export function normalizarResultado(d) {

@@ -13,7 +13,7 @@ No painel do serviço `controle-de-o-s` → Settings:
 | Build Command | `npm run build:render` |
 | Start Command | `npm start` |
 | Health Check Path | `/api/health` |
-| Environment | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_NAME`, `ADMIN_PIN`, `NODE_VERSION=22`; `GEMINI_API_KEY` para IA |
+| Environment | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_NAME`, `ADMIN_PIN`, `NODE_VERSION=22`; `GROQ_API_KEY` para IA |
 Depois: **Manual Deploy → Clear build cache & deploy**. Abra `https://SEU-SERVICO.onrender.com/`.
 (Ou use o `render.yaml` como Blueprint.) `/api/health` mostra `"front": true` quando o dist foi encontrado.
 
@@ -55,32 +55,33 @@ A existência das tabelas ou `banco.conectado: true` confirma conectividade/esqu
 ## Estrutura
 - `src/App.jsx` + `src/components/*` — interface · `src/store.js` — registros, fotos, tema e backup (neste navegador)
 - `src/api.js` — conexão com o backend (acorda o Render e tenta de novo) · `src/sync.js` — sincronização com a nuvem
-- `backend/server.js` — API + serve `dist/` · `backend/db.js` + `backend/sync-routes.js` — banco na nuvem (Turso) · `backend/ler-os.js` — prompt, schema e limpeza da leitura da O.S. (Gemini)
+- `backend/server.js` — API + serve `dist/` · `backend/db.js` + `backend/sync-routes.js` — banco na nuvem (Turso) · `backend/ler-os.js` — prompt, schema e limpeza da leitura da O.S. (Groq)
 - `backend/accounts.js` — usuários, cargos, sessões e migração no servidor; `src/auth.js` — login central
 - `public/admin.html` — redireciona para a administração React; `public/core.js` permanece apenas para leitura/migração de cadastros legados
-- `src/ocrLocal.js` — sobra do OCR antigo, não é mais usado · `legado-python-fastapi/` — backend antigo, não usado
+- `src/ocrLocal.js` — sobra do OCR antigo, não é mais usado
 
-## Leitura da O.S. com Gemini
-O front envia **só a foto** para `POST /api/ler-os`. O servidor guarda o prompt e a chave, chama a Interactions API do Gemini
-com saída em JSON (schema), limpa o resultado e devolve `{campos, incertos}`. A rota genérica `/api/ai` foi removida:
-antes qualquer pessoa podia usar sua chave para qualquer prompt.
+## Leitura da O.S. com Groq
+O front envia **só a foto** para `POST /api/ler-os` (exige login e a permissão `usar_ia`). O servidor guarda o prompt e a chave, chama a
+API de chat do Groq (`/openai/v1/chat/completions`) com a foto e saída em JSON (schema), limpa o resultado e devolve `{campos, incertos}`.
+A chave do Groq nunca vai para o navegador, e não existe rota genérica de IA: ninguém consegue usar a sua chave para outro prompt.
 
-Como gasta pouco token: sem "transcrição" da folha (era a maior saída), `thinking_level: low`, foto de 1600px.
+Como gasta pouco: sem "transcrição" da folha (era a maior saída), `reasoning_effort: none` (resposta direta) e foto de 1600px.
 Cada leitura imprime no log do Render o uso de tokens (`[ler-os] modelo uso=...`).
-Se um modelo não existir ou estiver fora do ar, o servidor tenta o próximo da lista automaticamente.
+Se o modelo não aceitar `json_schema` ou `reasoning_effort`, o servidor repete o pedido de forma mais simples; se um modelo não existir
+ou estiver fora do ar, tenta o próximo da lista.
 
 | Variável | Para quê |
 |---|---|
-| `GEMINI_API_KEY` | chave do Google AI Studio (obrigatória) |
-| `GEMINI_MODELS` | modelos em ordem de tentativa, separados por vírgula (padrão: `gemini-3.8-flash,gemini-3.5-flash`) |
-| `GEMINI_THINKING` | `low` (padrão); `high` se a letra de mão errar muito; vazio = não enviar |
+| `GROQ_API_KEY` | chave do Groq (obrigatória para a IA) |
+| `GROQ_MODELS` | modelos com visão em ordem de tentativa, separados por vírgula (padrão: `qwen/qwen3.8-27b`) |
+| `GROQ_REASONING` | `none` (padrão, direto); `low`/`medium`/`high` se a letra de mão errar muito; vazio = não enviar |
 
 ## Administração e investigação de falhas
 
 A administração foi reconstruída em React, com visão geral, tabela de usuários, edição de acesso/PIN, cargos e permissões, conexões e backup. `public/admin.html` redireciona para `?view=admin`; o layout e os scripts do painel antigo deixaram de ser usados. Os cadastros existentes são mantidos. O login exige digitar nome e PIN, não oferece lembrar credenciais e nunca grava PINs em texto. Hashes dos cadastros legados continuam necessários para validar os usuários.
 
-**Solução de problemas** permite descrever equipamento, código e sintomas. O backend envia o pedido ao Gemini `generateContent` com a ferramenta `google_search`, e devolve a orientação e as fontes retornadas pelo provedor. Respostas sem evidência de pesquisa e sem fontes HTTPS são recusadas; não há simulação de busca em produção. A permissão usada é `perguntar_ia`. A rota `POST /api/diagnostico` exige sessão central e a permissão `perguntar_ia`, valida o corpo e limita consultas a 10 por minuto por IP.
+**Solução de problemas** permite descrever equipamento, código e sintomas. O backend envia o pedido ao Groq (`chat/completions`) com a ferramenta `browser_search`, e devolve a orientação e as fontes retornadas pelo provedor. Respostas sem evidência de pesquisa e sem fontes HTTPS são recusadas; não há simulação de busca em produção. A permissão usada é `perguntar_ia`. A rota `POST /api/diagnostico` exige sessão central e a permissão `perguntar_ia`, valida o corpo e limita consultas a 10 por minuto por IP.
 
-Configure `GEMINI_API_KEY` somente no servidor. `DIAGNOSTICO_MODEL` é opcional (padrão `gemini-2.5-flash`) e deve selecionar um modelo disponível na conta com suporte a Google Search. A conta precisa permitir grounding/pesquisa e ter cota disponível; cobrança segue o provedor. Não reutilizamos uma resposta sem fontes como diagnóstico confirmado. A orientação é auxiliar: confirme o manual e os procedimentos de segurança antes de intervir.
+Configure `GROQ_API_KEY` somente no servidor. `DIAGNOSTICO_MODEL` é opcional (padrão `openai/gpt-oss-120b`) e precisa ser um modelo com `browser_search` (`openai/gpt-oss-*`). Os modelos `groq/compound*` foram desativados pelo Groq em 21/09/2026. Se o Groq responder sem consultas/fontes no formato esperado, a rota recusa a resposta e registra no log do Render apenas os nomes dos campos recebidos (`[diagnostico] resposta sem fontes verificáveis`), para ajustar a leitura. Não reutilizamos uma resposta sem fontes como diagnóstico confirmado. A orientação é auxiliar: confirme o manual e os procedimentos de segurança antes de intervir.
 
 Validação local: `node --test backend/*.test.js` e `npm run build`. `accounts.integration.test.js` usa banco SQLite real e dois processos de servidor para testar identidade compartilhada, permissões, persistência, paginação e revogação de sessões. Isso valida o código, mas não substitui o teste com as credenciais do Turso no Render. Os testes de integração do provedor usam respostas simuladas para verificar contratos, fontes e erros; eles não comprovam acesso real à internet pelo provedor. Sem credencial configurada, a rota responde `503 AI_NOT_CONFIGURED`.

@@ -7,7 +7,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { PROMPT_OS, SCHEMA_OS, normalizarResultado } from "./ler-os.js";
+import { PROMPT_OS, SCHEMA_OS, DICA_JSON, normalizarResultado } from "./ler-os.js";
 import {
   conectarBanco,
   garantirBanco,
@@ -27,21 +27,21 @@ const DIST = path.resolve(
 const TEM_FRONT = existsSync(path.join(DIST, "index.html"));
 
 const PORT = Number(process.env.PORT || 10000);
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-const GEMINI_URL = (
-  process.env.GEMINI_BASE_URL ||
-  "https://generativelanguage.googleapis.com/v1beta"
+const GROQ_API_KEY = (process.env.GROQ_API_KEY || "").trim();
+const GROQ_URL = (
+  process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1"
 ).replace(/\/$/, "");
-// Tenta na ordem; se um modelo não existir/estiver fora do ar, usa o próximo. (GEMINI_MODELS="a,b")
+// Modelos com visão, na ordem de tentativa; se um não existir/estiver fora do ar, usa o próximo. (GROQ_MODELS="a,b")
 const MODELOS = (
-  process.env.GEMINI_MODELS ||
-  process.env.GEMINI_MODEL ||
-  "gemini-3.8-flash,gemini-3.5-flash"
+  process.env.GROQ_MODELS ||
+  process.env.GROQ_MODEL ||
+  "qwen/qwen3.8-27b"
 )
   .split(",")
   .map((x) => x.trim())
   .filter(Boolean);
-const THINKING = (process.env.GEMINI_THINKING || "low").trim(); // pouco raciocínio = pouco token; vazio = não enviar
+// "none" = modo direto (sem raciocínio): mais rápido e gasta menos cota. "default"/"low"/"medium"/"high" ligam o raciocínio; vazio = não enviar.
+const REASONING = (process.env.GROQ_REASONING ?? "none").trim();
 const SYNC_OK = () => Boolean(obterBanco());
 const identity = accounts({
   db: obterBanco,
@@ -152,7 +152,8 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     service: "controle-os",
-    ai: Boolean(GEMINI_API_KEY),
+    ai: Boolean(GROQ_API_KEY),
+    provider: "groq",
     models: MODELOS,
     front: TEM_FRONT,
     auth: true,
@@ -181,29 +182,51 @@ const FotoSchema = z
   })
   .strict();
 
-async function chamarGemini(model, foto, comThinking) {
+// Chamada à API do Groq (compatível com OpenAI). Variantes, da mais precisa para a mais simples,
+// para o caso de o modelo não aceitar json_schema ou reasoning_effort: só avançamos em erro 400 desses parâmetros.
+const VARIANTES = [
+  { schema: true, razao: true },
+  { schema: true, razao: false },
+  { schema: false, razao: false },
+];
+
+async function chamarGroq(model, foto, v) {
   const corpo = {
     model,
-    input: [
-      { type: "text", text: PROMPT_OS },
-      { type: "image", data: foto.image, mime_type: foto.mime },
+    messages: [
+      {
+        role: "system",
+        content: PROMPT_OS + (v.schema ? "" : "\n\n" + DICA_JSON),
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Leia esta O.S. e responda somente com o JSON." },
+          {
+            type: "image_url",
+            image_url: { url: `data:${foto.mime};base64,${foto.image}` },
+          },
+        ],
+      },
     ],
-    response_format: {
-      type: "text",
-      mime_type: "application/json",
-      schema: SCHEMA_OS,
-    },
+    temperature: 0,
+    max_completion_tokens: 1500,
+    response_format: v.schema
+      ? {
+          type: "json_schema",
+          json_schema: { name: "leitura_os", strict: false, schema: SCHEMA_OS },
+        }
+      : { type: "json_object" },
   };
-  if (comThinking && THINKING)
-    corpo.generation_config = { thinking_level: THINKING };
-  const r = await fetch(`${GEMINI_URL}/interactions`, {
+  if (v.razao && REASONING) corpo.reasoning_effort = REASONING;
+  const r = await fetch(`${GROQ_URL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-goog-api-key": GEMINI_API_KEY,
+      Authorization: `Bearer ${GROQ_API_KEY}`,
     },
     body: JSON.stringify(corpo),
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(60_000),
   });
   const bruto = await r.text();
   let json;
@@ -215,15 +238,21 @@ async function chamarGemini(model, foto, comThinking) {
   return { r, json, bruto };
 }
 
-function textoDaResposta(j) {
-  if (typeof j?.output_text === "string" && j.output_text.trim())
-    return j.output_text;
-  const out = [];
-  for (const s of j?.steps || [])
-    if (s.type === "model_output")
-      for (const c of s.content || [])
-        if (typeof c?.text === "string") out.push(c.text);
-  return out.join("\n").trim();
+async function chamarComVariantes(model, foto) {
+  let t;
+  for (const v of VARIANTES) {
+    if (v.razao && !REASONING) continue;
+    t = await chamarGroq(model, foto, v);
+    const msg = t.json?.error?.message || "";
+    // 400 por parâmetro não suportado: tenta a próxima variante. Qualquer outra resposta encerra.
+    if (
+      t.r.status === 400 &&
+      /reasoning|response_format|json_schema|schema|strict/i.test(msg)
+    )
+      continue;
+    return t;
+  }
+  return t;
 }
 
 app.post(
@@ -233,11 +262,11 @@ app.post(
   identity.need("usar_ia"),
   async (req, res, next) => {
     try {
-      if (!GEMINI_API_KEY) {
+      if (!GROQ_API_KEY) {
         return res.status(503).json({
           error: {
             code: "AI_NOT_CONFIGURED",
-            message: "IA não configurada no servidor (GEMINI_API_KEY).",
+            message: "IA não configurada no servidor (GROQ_API_KEY).",
           },
         });
       }
@@ -249,20 +278,18 @@ app.post(
 
       let ultimo = null;
       for (const model of MODELOS) {
-        let t = await chamarGemini(model, v.data, true);
-        // Modelo sem suporte a thinking_level: repete sem ele.
-        if (
-          t.r.status === 400 &&
-          THINKING &&
-          /thinking|generation_config/i.test(t.bruto)
-        )
-          t = await chamarGemini(model, v.data, false);
+        const t = await chamarComVariantes(model, v.data);
 
         if (t.r.ok) {
-          const texto = textoDaResposta(t.json);
+          const texto = String(t.json?.choices?.[0]?.message?.content || "");
           let dados;
           try {
-            dados = JSON.parse(texto.replace(/```json|```/gi, "").trim());
+            dados = JSON.parse(
+              texto
+                .replace(/<think>[\s\S]*?<\/think>/gi, "")
+                .replace(/```json|```/gi, "")
+                .trim(),
+            );
           } catch {
             dados = null;
           }
@@ -281,12 +308,13 @@ app.post(
           return res.json(normalizarResultado(dados));
         }
         const msg = t.json?.error?.message || "Falha no provedor de IA.";
-        console.error("[gemini]", model, t.r.status, msg.slice(0, 200));
+        console.error("[groq]", model, t.r.status, msg.slice(0, 200));
         if (t.r.status === 401 || t.r.status === 403) {
           return res.status(502).json({
             error: {
               code: "AI_PROVIDER_ERROR",
-              message: "Chave do Gemini inválida ou sem permissão no servidor.",
+              message:
+                "Chave do Groq inválida ou sem permissão (confira GROQ_API_KEY no Render).",
             },
           });
         }
@@ -295,7 +323,7 @@ app.post(
           code: "AI_PROVIDER_ERROR",
           message:
             t.r.status === 429
-              ? "Limite de uso do Gemini atingido. Tente em instantes."
+              ? "Limite gratuito do Groq atingido. Tente em instantes."
               : msg,
         };
         // 400 sem relação com modelo = foto/pedido ruim: não adianta trocar de modelo.
@@ -319,9 +347,9 @@ app.use(
   exigirToken,
   identity.need("perguntar_ia"),
   diagnosticRouter({
-    apiKey: GEMINI_API_KEY,
-    baseURL: GEMINI_URL,
-    model: process.env.DIAGNOSTICO_MODEL || "gemini-2.5-flash",
+    apiKey: GROQ_API_KEY,
+    baseURL: GROQ_URL,
+    model: process.env.DIAGNOSTICO_MODEL || "openai/gpt-oss-120b",
   }),
 );
 
@@ -426,6 +454,6 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, () => {
   console.log(
-    `controle-os na porta ${PORT} · front: ${TEM_FRONT ? DIST : "NÃO ENCONTRADO"} · IA: ${GEMINI_API_KEY ? MODELOS.join(" > ") : "sem chave"} · nuvem: ${estadoBanco().configurado ? "centralizada" : "desligada"}`,
+    `controle-os na porta ${PORT} · front: ${TEM_FRONT ? DIST : "NÃO ENCONTRADO"} · IA: ${GROQ_API_KEY ? "Groq " + MODELOS.join(" > ") : "sem chave"} · nuvem: ${estadoBanco().configurado ? "centralizada" : "desligada"}`,
   );
 });
