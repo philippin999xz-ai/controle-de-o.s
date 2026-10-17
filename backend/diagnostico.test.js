@@ -89,6 +89,9 @@ test("enables web search on server and returns real provider metadata", async ()
         const body = JSON.parse(options.body);
         assert.match(url, /\/chat\/completions$/);
         assert.equal(options.headers.Authorization, "Bearer test-only-not-a-credential");
+        assert.match(body.messages[0].content, /P04, P004, F004 e A004 não são equivalentes/);
+        assert.match(body.messages[0].content, /Não infira sintomas ausentes/);
+        assert.match(body.messages[0].content, /Não use Markdown/);
         assert.equal(body.model, "openai/gpt-oss-120b");
         assert.deepEqual(body.tools, [{ type: "browser_search" }]);
         assert.equal(JSON.parse(body.messages[1].content).sintoma, question.sintoma);
@@ -165,4 +168,20 @@ test("classifies provider refusals without leaking upstream text or credentials"
       assert.doesNotMatch(JSON.stringify([result, logs]), /private-key|private-question|upstream details/);
     });
   }
+});
+
+test("does not present a truncated investigation as a complete answer", async () => {
+  await withAPI({
+    apiKey: "test",
+    logger: { warn() {} },
+    fetchImpl: async () => new Response(JSON.stringify({
+      choices: [{ message, finish_reason: "length" }],
+    })),
+  }, async (request) => {
+    const response = await request(question);
+    assert.equal(response.status, 422);
+    const result = await response.json();
+    assert.equal(result.error.code, "SEARCH_INCOMPLETE");
+    assert.equal(result.resposta, undefined);
+  });
 });
