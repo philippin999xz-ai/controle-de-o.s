@@ -74,6 +74,18 @@ export async function loginAccount(nome, pin) {
   emit();
   return { ok: true };
 }
+// Primeiro acesso: cria o administrador central direto pelo app (o servidor só aceita enquanto não existe nenhum usuário).
+export async function setupAdmin(nome, pin) {
+  const version = ++generation;
+  const data = await accountRequest("/setup", "POST", { nome, pin });
+  if (version !== generation) throw Error("O acesso mudou. Tente novamente.");
+  S.setSessionToken(data.token);
+  await S.selectAccount(data.user);
+  if (version !== generation) throw Error("O acesso mudou. Entre novamente.");
+  state = { ...state, ...data, ready: true, hasUsers: true, error: "" };
+  emit();
+  return { ok: true };
+}
 export async function logoutAccount() {
   ++generation;
   const revocation = accountRequest("/logout", "POST");
@@ -103,6 +115,15 @@ export function core() {
         await refreshAccount();
         return { ok: true };
       } catch (e) {
+        return { ok: false, erro: e.message };
+      }
+    },
+    primeiroAdmin: async (nome, pin) => {
+      try {
+        return await setupAdmin(nome, pin);
+      } catch (e) {
+        // Outra pessoa criou o administrador antes: passa para a tela de entrada.
+        if (e.status === 409) await refreshAccount();
         return { ok: false, erro: e.message };
       }
     },

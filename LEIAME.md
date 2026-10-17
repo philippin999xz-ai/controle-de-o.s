@@ -13,7 +13,7 @@ No painel do serviço `controle-de-o-s` → Settings:
 | Build Command | `npm run build:render` |
 | Start Command | `npm start` |
 | Health Check Path | `/api/health` |
-| Environment | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_NAME`, `ADMIN_PIN`, `NODE_VERSION=22`; `GROQ_API_KEY` para IA |
+| Environment | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `NODE_VERSION=22`; `GROQ_API_KEY` para IA |
 Depois: **Manual Deploy → Clear build cache & deploy**. Abra `https://SEU-SERVICO.onrender.com/`.
 (Ou use o `render.yaml` como Blueprint.) `/api/health` mostra `"front": true` quando o dist foi encontrado.
 
@@ -22,11 +22,11 @@ Depois: **Manual Deploy → Clear build cache & deploy**. Abra `https://SEU-SERV
 `FRONTEND_ORIGIN=https://SEU-USUARIO.github.io` (CORS). Para outro endereço de API: `VITE_API_BASE=https://...`.
 
 ## Desenvolvimento local
-Instale com `npm ci --include=dev` e `npm --prefix backend ci`. Configure `TURSO_DATABASE_URL` (é permitido `file:/tmp/controle-os.db` para desenvolvimento), `ADMIN_NAME` e `ADMIN_PIN` no processo do backend. Inicie `npm start` e, em outro terminal, `npm run dev`. O proxy aponta para `localhost:10000`; `VITE_PROXY_TARGET` permite outro destino. Os `.env.example` documentam os nomes; o servidor lê variáveis do processo, não carrega arquivos `.env` automaticamente.
+Instale com `npm ci --include=dev` e `npm --prefix backend ci`. Configure `TURSO_DATABASE_URL` (é permitido `file:/tmp/controle-os.db` para desenvolvimento) no processo do backend; o primeiro administrador é criado pelo próprio app. Inicie `npm start` e, em outro terminal, `npm run dev`. O proxy aponta para `localhost:10000`; `VITE_PROXY_TARGET` permite outro destino. Os `.env.example` documentam os nomes; o servidor lê variáveis do processo, não carrega arquivos `.env` automaticamente.
 
 ## Dados e contas centrais no Render / Turso
 1. No Render → Environment, configure `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN` do mesmo banco Turso.
-2. Para um banco sem usuários, defina `ADMIN_NAME` e `ADMIN_PIN` (4 a 8 números) e faça o deploy. O servidor cria o primeiro administrador uma única vez. Alterar essas variáveis depois não redefine contas existentes; use a administração para redefinir PINs.
+2. Com o banco ainda sem usuários, abra o app: ele mostra **Configure seu primeiro acesso**. Informe nome e PIN (4 a 8 números) para criar o administrador e já entrar. Isso só funciona enquanto não existe nenhum usuário (`POST /api/auth/setup`, na mesma transação da checagem, limitado por IP); depois do primeiro, a rota responde 409 e fica fechada. **Faça isso logo após o deploy**: até lá, quem abrir o endereço antes poderia criar o administrador. Alternativa sem tela: `ADMIN_NAME` e `ADMIN_PIN` no Render criam o mesmo administrador na subida (opcional; remova `ADMIN_PIN` depois). Alterar essas variáveis depois não redefine contas existentes; use a administração para redefinir PINs.
 3. Entre com esse usuário em qualquer aparelho. Cadastre a equipe em **Administração → Usuários**. O mesmo nome, PIN e cargo funcionam no desktop e no celular. Não se configura chave em cada aparelho; `APP_TOKEN` deixou de autenticar o navegador.
 4. As tabelas `usuarios`, `cargos` e `sessoes` são criadas automaticamente ao lado de `os` e `fotos`. As ordens e fotos existentes são preservadas. As chaves do Turso e da IA nunca são enviadas ao app.
 

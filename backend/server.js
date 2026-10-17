@@ -354,7 +354,7 @@ app.use(
 );
 
 app.use(
-  "/api/auth/login",
+  ["/api/auth/login", "/api/auth/setup"],
   limiteChave,
   rateLimit({
     windowMs: 900000,

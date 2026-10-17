@@ -21,18 +21,16 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
     setBusy(true);
     try {
       if (register) {
-        if (!mayRegister)
+        if (!initial && !mayRegister)
           throw Error("O cadastro de usuários é feito pela administração.");
         if (pin !== repeat) throw Error("Os PINs não conferem.");
-        const result = await core().criarUsuario({
-          nome: name,
-          cargo: initial ? "Administrador" : role,
-          pin,
-        });
+        const result = initial
+          ? await core().primeiroAdmin(name.trim(), pin)
+          : await core().criarUsuario({ nome: name, cargo: role, pin });
         if (!result.ok) throw Error(result.erro);
         setPin("");
         setRepeat("");
-        onSuccess(register && !initial ? "Usuário cadastrado." : "");
+        onSuccess(initial ? "" : "Usuário cadastrado.");
       } else {
         const result = await core().login(name.trim(), pin);
         setPin("");
@@ -58,7 +56,7 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
       <p className="mut">
         {register
           ? initial
-            ? "Crie a conta de administração para organizar os acessos da equipe."
+            ? "Crie a conta de administração para organizar os acessos da equipe. Depois de criada, esta etapa é fechada: ninguém mais consegue se cadastrar como administrador."
             : "O novo usuário terá as permissões do cargo selecionado."
           : "Entre com seu usuário e PIN para continuar a manutenção."}
       </p>
@@ -151,7 +149,7 @@ export function AccessForm({ mode = "login", onSuccess, onMode }) {
         )}
         <button
           className="access-submit"
-          disabled={busy || (register && !mayRegister)}
+          disabled={busy || (register && !initial && !mayRegister)}
         >
           {busy ? "Aguarde…" : register ? "Criar conta" : "Entrar"}
         </button>
@@ -227,7 +225,11 @@ export function AccountScreen({
   setupRequired = false,
   onRetry,
 }) {
-  const [mode, setMode] = useState(initialMode);
+  const [mode, setMode] = useState(setupRequired ? "register" : initialMode);
+  // Se o administrador for criado em outro aparelho enquanto esta tela está aberta, volta para a entrada.
+  useEffect(() => {
+    if (!setupRequired) setMode("login");
+  }, [setupRequired]);
   return (
     <main className="access-screen">
       <div className="access-intro">
@@ -241,30 +243,12 @@ export function AccountScreen({
         </p>
       </div>
       <div className="access-card">
-        {setupRequired ? (
-          <div className="access-form">
-            <img className="app-logo" src="./logo.png" alt="Açoforja" />
-            <h1>Configure o acesso central</h1>
-            <p className="mut">
-              No Render, defina ADMIN_NAME e ADMIN_PIN (4 a 8 números) nas
-              variáveis do servidor e faça um novo deploy. Essas credenciais
-              criam somente o primeiro administrador no Turso.
-            </p>
-            <p className="mut">
-              Depois, usuários e cargos são cadastrados nesta administração e
-              ficam disponíveis em todos os aparelhos. Nenhuma chave do banco é
-              digitada no app.
-            </p>
-            <button onClick={onRetry}>Verificar configuração</button>
-          </div>
-        ) : (
-          <AccessForm
-            key={mode}
-            mode={mode}
-            onSuccess={onSuccess}
-            onMode={setMode}
-          />
-        )}
+        <AccessForm
+          key={mode}
+          mode={mode}
+          onSuccess={onSuccess}
+          onMode={setMode}
+        />
       </div>
     </main>
   );

@@ -214,6 +214,70 @@ export function accounts({ db, ready, adminName = "", adminPin = "" }) {
       .set("Cache-Control", "no-store")
       .json({ central: true, hasUsers: Number(result.rows[0].n) > 0 });
   });
+  // Primeiro acesso: cria o administrador direto pelo app, SOMENTE enquanto não existir nenhum usuário.
+  // A checagem e a inserção ocorrem na mesma transação de escrita: duas pessoas ao mesmo tempo não
+  // criam dois administradores, e depois do primeiro usuário esta rota fica fechada (409) para sempre.
+  router.post("/setup", async (req, res) => {
+    const p = loginSchema.safeParse(req.body);
+    if (!p.success)
+      return res.status(400).json({
+        error: { message: "Informe o nome e um PIN de 4 a 8 números." },
+      });
+    const c = await credentials(p.data.pin);
+    const id = randomUUID();
+    const tx = await db().transaction("write");
+    try {
+      const count = await tx.execute("SELECT COUNT(*) AS n FROM usuarios");
+      if (Number(count.rows[0].n) > 0) {
+        await tx.rollback();
+        return res.status(409).json({
+          error: {
+            code: "SETUP_CLOSED",
+            message:
+              "O primeiro administrador já foi criado. Entre com seu usuário e PIN.",
+          },
+        });
+      }
+      await tx.execute({
+        sql: "INSERT INTO usuarios(id,nome,nome_normalizado,cargo,salt,hash,ativo,criado) VALUES(?,?,?,?,?,?,1,?)",
+        args: [
+          id,
+          p.data.nome,
+          norm(p.data.nome),
+          "Administrador",
+          c.salt,
+          c.hash,
+          new Date().toISOString(),
+        ],
+      });
+      await tx.commit();
+    } catch (e) {
+      try {
+        await tx.rollback();
+      } catch {}
+      throw e;
+    } finally {
+      tx.close();
+    }
+    const token = randomBytes(32).toString("hex");
+    await db().execute({
+      sql: "INSERT INTO sessoes(token_hash,usuario_id,expira_em) VALUES(?,?,?)",
+      args: [digest(token), id, Date.now() + 8 * 3600000],
+    });
+    const user = {
+      id,
+      nome: p.data.nome,
+      cargo: "Administrador",
+      ativo: true,
+      criado: new Date().toISOString(),
+      perms: PERMS,
+      nivel: 99,
+    };
+    res
+      .status(201)
+      .set("Cache-Control", "no-store")
+      .json({ token, ...(await snapshot(user)) });
+  });
   async function session(req, res, next) {
     try {
       const token = /^Bearer\s+([a-f0-9]{64})$/i.exec(

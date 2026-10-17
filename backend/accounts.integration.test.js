@@ -14,7 +14,7 @@ async function port() {
   await new Promise((r) => s.close(r));
   return p;
 }
-async function start(url) {
+async function start(url, admin = true) {
   const p = await port(),
     child = spawn(process.execPath, ["backend/server.js"], {
       cwd: process.cwd(),
@@ -23,8 +23,8 @@ async function start(url) {
         PORT: String(p),
         TURSO_DATABASE_URL: url,
         TURSO_AUTH_TOKEN: "",
-        ADMIN_NAME: "Central Admin",
-        ADMIN_PIN: "123456",
+        ADMIN_NAME: admin ? "Central Admin" : "",
+        ADMIN_PIN: admin ? "123456" : "",
         GROQ_API_KEY: "",
       },
       stdio: "ignore",
@@ -33,7 +33,7 @@ async function start(url) {
   for (let n = 0; n < 100; n++) {
     try {
       const r = await fetch(base + "/api/auth/status");
-      if (r.ok && (await r.json()).hasUsers) return { base, child };
+      if (r.ok && (!admin || (await r.json()).hasUsers)) return { base, child };
     } catch {}
     await new Promise((r) => setTimeout(r, 100));
   }
@@ -297,6 +297,49 @@ test("central identities, authorization, shared data, revocation and restart per
         s.child.kill();
         await new Promise((r) => s.child.once("exit", r));
       }
+    }
+    db.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("first administrator is created from the app only once, without bootstrap variables", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "os-setup-"));
+  const url = "file:" + path.join(dir, "central.db");
+  let a;
+  const db = createClient({ url });
+  try {
+    a = await start(url, false);
+    const status = await (await call(a.base, "/api/auth/status")).json();
+    assert.equal(status.hasUsers, false);
+    assert.equal(
+      (await call(a.base, "/api/auth/setup", { method: "POST", body: { nome: "X", pin: "12" } })).status,
+      400,
+    );
+    const created = await call(a.base, "/api/auth/setup", {
+      method: "POST",
+      body: { nome: "Primeiro Admin", pin: "246810" },
+    });
+    assert.equal(created.status, 201);
+    const session = await created.json();
+    assert.equal(session.user.cargo, "Administrador");
+    assert.ok(!JSON.stringify(session).includes("246810"));
+    const me = await call(a.base, "/api/auth/me", { token: session.token });
+    assert.equal(me.status, 200);
+    // fechada para sempre: ninguém mais vira administrador por esta rota
+    const closed = await call(a.base, "/api/auth/setup", {
+      method: "POST",
+      body: { nome: "Intruso", pin: "135790" },
+    });
+    assert.equal(closed.status, 409);
+    assert.equal((await db.execute("SELECT COUNT(*) AS n FROM usuarios")).rows[0].n, 1);
+    // o administrador criado entra normalmente depois
+    const signed = await login(a.base, "primeiro admin", "246810");
+    assert.equal(signed.user.cargo, "Administrador");
+  } finally {
+    if (a?.child.exitCode === null) {
+      a.child.kill();
+      await new Promise((r) => a.child.once("exit", r));
     }
     db.close();
     await rm(dir, { recursive: true, force: true });

@@ -17,9 +17,6 @@ services:
         sync: false                 # libsql://... (painel do Turso)
       - key: TURSO_AUTH_TOKEN
         sync: false                 # token do banco (painel do Turso)
-      - key: ADMIN_NAME
-        sync: false                 # nome do primeiro administrador central
-      - key: ADMIN_PIN
-        sync: false                 # PIN inicial (4 a 8 números); usado somente com banco sem usuários
+      # O primeiro administrador é criado direto no app (tela de primeiro acesso); não precisa de variável.
       - key: FRONTEND_ORIGIN
         value: https://philippin999xz-ai.github.io   # só se ainda usar o GitHub Pages
