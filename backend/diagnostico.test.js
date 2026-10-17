@@ -163,8 +163,8 @@ test("classifies provider refusals without leaking upstream text or credentials"
       assert.equal(response.status, 502);
       const result = await response.json();
       assert.equal(result.error.code, expected);
-      assert.equal(logs[0][1].status, status);
-      assert.equal(logs[0][1].category, expected);
+      assert.equal(logs.at(-1)[1].status, status);
+      assert.equal(logs.at(-1)[1].category, expected);
       assert.doesNotMatch(JSON.stringify([result, logs]), /private-key|private-question|upstream details/);
     });
   }
@@ -184,4 +184,38 @@ test("does not present a truncated investigation as a complete answer", async ()
     assert.equal(result.error.code, "SEARCH_INCOMPLETE");
     assert.equal(result.resposta, undefined);
   });
+});
+
+test("recovers once from HTTP 500 without repeating a successful search", async () => {
+  let calls = 0;
+  const signals = [];
+  await withAPI({
+    apiKey: "test", logger: { warn() {} },
+    fetchImpl: async (_url, options) => {
+      signals.push(options.signal);
+      calls++;
+      return calls === 1 ? new Response("internal", { status: 500 })
+        : new Response(JSON.stringify({ choices: [{ message }] }));
+    },
+  }, async (request) => {
+    const response = await request(question);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).resposta, message.content);
+    assert.equal(calls, 2);
+    assert.equal(signals[0], signals[1]);
+  });
+});
+test("bounds retries and never retries credentials, quota or invalid requests", async () => {
+  for (const status of [500, 502, 503, 504, 401, 403, 429, 400]) {
+    let calls = 0;
+    await withAPI({
+      apiKey: "test", logger: { warn() {} },
+      fetchImpl: async () => { calls++; return new Response("error", { status }); },
+    }, async (request) => {
+      const response = await request(question);
+      assert.equal(response.status, status === 429 ? 429 : 502);
+      assert.equal(calls, status >= 500 ? 2 : 1);
+      if (status >= 500) assert.match((await response.json()).error.message, /mesmo após uma nova tentativa/);
+    });
+  }
 });

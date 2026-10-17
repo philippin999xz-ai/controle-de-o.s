@@ -131,7 +131,8 @@ export function erroAmigavel(e) {
   return e?.message || s[e?.codigo] || s.http;
 }
 
-// Pesquisa técnica com busca na web feita somente no backend. Não repete pedidos pagos.
+// Pesquisa técnica com busca na web feita somente no backend. O front não repete pedidos;
+// o servidor permite uma nova tentativa apenas após HTTP 500/502/503/504.
 export async function pesquisarFalha(dados) {
   try {
     const r = await req(

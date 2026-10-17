@@ -101,9 +101,7 @@ export function diagnosticRouter({
       });
     try {
       const q = parsed.data;
-      const response = await fetchImpl(
-        `${baseURL.replace(/\/$/, "")}/chat/completions`,
-        {
+      const requestOptions = {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -121,15 +119,32 @@ export function diagnosticRouter({
             max_completion_tokens: 6000,
           }),
           signal: AbortSignal.timeout(60000),
-        },
-      );
+      };
+      // Um único orçamento de 60s inclui as duas tentativas. Nunca repete
+      // respostas bem-sucedidas, erros de autenticação, configuração ou cota.
+      let response;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        response = await fetchImpl(
+          `${baseURL.replace(/\/$/, "")}/chat/completions`,
+          requestOptions,
+        );
+        if (attempt === 0 && [500, 502, 503, 504].includes(response.status)) {
+          logger.warn("[diagnostico] nova tentativa após erro do provedor", { status: response.status });
+          await response.body?.cancel();
+          await new Promise((resolve) => setTimeout(resolve, 700));
+          continue;
+        }
+        break;
+      }
       if (!response.ok) {
         let upstream = {};
         try { upstream = await response.json(); } catch {}
         const code = String(upstream?.error?.code || "");
         const detail = String(upstream?.error?.message || "");
         let category = "SEARCH_PROVIDER_ERROR";
-        let message = "O provedor de pesquisa está indisponível. Tente novamente em instantes.";
+        let message = response.status >= 500
+          ? `O Groq retornou erro interno (HTTP ${response.status}) mesmo após uma nova tentativa. Tente novamente em instantes.`
+          : "O Groq recusou a pesquisa. Solicite a verificação do serviço à administração.";
         if (response.status === 401 || response.status === 403) {
           category = "SEARCH_PROVIDER_AUTH";
           message = "O Groq recusou o acesso. A administração deve verificar a chave e as permissões no Render.";
