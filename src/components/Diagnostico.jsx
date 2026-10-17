@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { pesquisarFalha } from "../api.js";
+import { pesquisarFalha, historicoFalhas, abrirPesquisa } from "../api.js";
 import Icon from "./Icon.jsx";
 export default function Diagnostico() {
   const [equipamento, setEquipamento] = useState(""),
@@ -8,9 +8,45 @@ export default function Diagnostico() {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [nextPage, setNextPage] = useState(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const alive = useRef(true);
+  async function loadHistory(offset = 0) {
+    setHistoryBusy(true);
+    setHistoryError("");
+    try {
+      const data = await historicoFalhas(offset);
+      if (!alive.current) return;
+      setHistory((old) => offset ? [...old, ...data.pesquisas.filter((item) => !old.some((p) => p.id === item.id))] : data.pesquisas);
+      setNextPage(data.proximo);
+    } catch (e) {
+      if (alive.current) setHistoryError(e.message);
+    } finally {
+      if (alive.current) setHistoryBusy(false);
+    }
+  }
+  async function openHistory(id) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await abrirPesquisa(id);
+      if (!alive.current) return;
+      setEquipamento(data.equipamento);
+      setCodigo(data.codigo);
+      setSintoma(data.sintoma);
+      setResult(data.resultado);
+    } catch (e) {
+      if (alive.current) setError(e.message);
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
   useEffect(() => {
     alive.current = true;
+    loadHistory();
     return () => {
       alive.current = false;
     };
@@ -23,7 +59,10 @@ export default function Diagnostico() {
     setResult(null);
     try {
       const data = await pesquisarFalha({ equipamento, codigo, sintoma });
-      if (alive.current) setResult(data);
+      if (alive.current) {
+        setResult(data);
+        loadHistory();
+      }
     } catch (e) {
       if (alive.current) setError(e.message);
     } finally {
@@ -87,6 +126,26 @@ export default function Diagnostico() {
             siga os procedimentos de segurança antes de intervir.
           </p>
         </div>
+        <div className="diagnostic-history">
+          <div className="section-heading">
+            <h3>Minhas pesquisas</h3>
+            <button type="button" className="secondary" disabled={historyBusy || busy} onClick={() => loadHistory()}>Atualizar</button>
+          </div>
+          <p className="mut">Seu histórico pessoal, disponível no celular e na web. Abrir uma pesquisa não consulta a IA novamente.</p>
+          {historyError && <p role="alert">{historyError}</p>}
+          {!history.length && !historyBusy && !historyError && <p className="mut">Suas próximas pesquisas aparecerão aqui.</p>}
+          <ul>
+            {history.map((item) => <li key={item.id}>
+              <button type="button" disabled={busy} onClick={() => openHistory(item.id)}>
+                <strong>{item.equipamento || "Equipamento não informado"}{item.codigo ? ` · ${item.codigo}` : ""}</strong>
+                <span>{item.sintoma}</span>
+                <small>{new Date(item.criado_em).toLocaleString("pt-BR")}</small>
+              </button>
+            </li>)}
+          </ul>
+          {historyBusy && <p role="status">Carregando histórico…</p>}
+          {nextPage !== null && <button type="button" className="secondary" disabled={historyBusy || busy} onClick={() => loadHistory(nextPage)}>Carregar mais</button>}
+        </div>
       </section>
       <section
         className="card diagnostic-result"
@@ -114,6 +173,7 @@ export default function Diagnostico() {
               <h2>Orientação para investigação</h2>
               <span className="neutral-pill">Com fontes da web</span>
             </div>
+            {result.historicoSalvo === false && <p role="alert">A orientação foi concluída, mas não foi salva no histórico. Guarde uma cópia antes de sair.</p>}
             <div className="diagnostic-answer">{result.resposta}</div>
             <div className="diagnostic-sources">
               <h3>Fontes consultadas</h3>

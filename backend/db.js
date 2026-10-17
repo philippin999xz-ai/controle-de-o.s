@@ -33,6 +33,8 @@ export function lerConfigBanco(env = process.env) {
 }
 
 const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS pesquisas_diagnostico(id TEXT PRIMARY KEY,usuario_id TEXT NOT NULL,equipamento TEXT NOT NULL,codigo TEXT NOT NULL,sintoma TEXT NOT NULL,resultado TEXT NOT NULL,criado_em TEXT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS pesquisas_usuario_data ON pesquisas_diagnostico(usuario_id,criado_em DESC,id DESC)`,
   `CREATE TABLE IF NOT EXISTS cargos(nome TEXT PRIMARY KEY,nivel INTEGER NOT NULL,fixo INTEGER NOT NULL DEFAULT 0,perms TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS usuarios(id TEXT PRIMARY KEY,nome TEXT NOT NULL,nome_normalizado TEXT NOT NULL UNIQUE,cargo TEXT NOT NULL,salt TEXT NOT NULL,hash TEXT NOT NULL,ativo INTEGER NOT NULL DEFAULT 1,criado TEXT NOT NULL,tentativas INTEGER NOT NULL DEFAULT 0,bloqueado_ate INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS sessoes(token_hash TEXT PRIMARY KEY,usuario_id TEXT NOT NULL,expira_em INTEGER NOT NULL)`,

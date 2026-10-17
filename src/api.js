@@ -161,3 +161,16 @@ export async function pesquisarFalha(dados) {
     );
   }
 }
+
+export async function historicoFalhas(offset = 0) {
+  const r = await req(`/api/diagnostico/historico?offset=${offset}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data?.error?.message || "Não foi possível carregar o histórico.");
+  return data;
+}
+export async function abrirPesquisa(id) {
+  const r = await req(`/api/diagnostico/historico/${encodeURIComponent(id)}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data?.error?.message || "Não foi possível abrir a pesquisa.");
+  return data;
+}

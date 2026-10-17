@@ -347,6 +347,7 @@ app.use(
   exigirToken,
   identity.need("perguntar_ia"),
   diagnosticRouter({
+    db: obterBanco,
     apiKey: GROQ_API_KEY,
     baseURL: GROQ_URL,
     model: process.env.DIAGNOSTICO_MODEL || "openai/gpt-oss-120b",

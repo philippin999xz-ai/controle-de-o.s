@@ -376,7 +376,7 @@ export default function App() {
               syncState={nuvem}
             />
           )}
-          {tab === "diag" && allowed("diag") && <Diagnostico />}
+          {tab === "diag" && allowed("diag") && <Diagnostico key={account.user.id} />}
           {aviso && (
             <div className="banner" role="status">
               {aviso}

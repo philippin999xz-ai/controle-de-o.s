@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import express from "express";
 import { z } from "zod";
 const Question = z
@@ -79,8 +80,37 @@ export function diagnosticRouter({
   model = "openai/gpt-oss-120b",
   fetchImpl = fetch,
   logger = console,
+  db,
 }) {
   const router = express.Router();
+  router.get("/historico", async (req, res) => {
+    if (!db || !req.user?.id) return res.status(503).json({ error: { message: "Histórico indisponível." } });
+    const offset = Number(req.query.offset || 0);
+    if (!Number.isSafeInteger(offset) || offset < 0) return res.status(400).json({ error: { message: "Página inválida." } });
+    try {
+      const result = await db().execute({
+        sql: "SELECT id,equipamento,codigo,sintoma,criado_em FROM pesquisas_diagnostico WHERE usuario_id=? ORDER BY criado_em DESC,id DESC LIMIT 21 OFFSET ?",
+        args: [req.user.id, offset],
+      });
+      res.set("Cache-Control", "no-store").json({ pesquisas: result.rows.slice(0, 20), proximo: result.rows.length > 20 ? offset + 20 : null });
+    } catch {
+      res.status(503).json({ error: { message: "Não foi possível carregar seu histórico. Tente novamente." } });
+    }
+  });
+  router.get("/historico/:id", async (req, res) => {
+    if (!db || !req.user?.id) return res.status(503).json({ error: { message: "Histórico indisponível." } });
+    try {
+      const result = await db().execute({
+        sql: "SELECT * FROM pesquisas_diagnostico WHERE id=? AND usuario_id=?",
+        args: [req.params.id, req.user.id],
+      });
+      if (!result.rows.length) return res.status(404).json({ error: { message: "Pesquisa não encontrada." } });
+      const { resultado, usuario_id, ...row } = result.rows[0];
+      res.set("Cache-Control", "no-store").json({ ...row, resultado: JSON.parse(resultado) });
+    } catch {
+      res.status(503).json({ error: { message: "Não foi possível abrir a pesquisa." } });
+    }
+  });
   router.post("/", async (req, res, next) => {
     const parsed = Question.safeParse(req.body);
     if (!parsed.success)
@@ -195,6 +225,20 @@ export function diagnosticRouter({
               "A pesquisa não trouxe fontes verificáveis. Informe a marca, o modelo e mais detalhes da falha para tentar novamente.",
           },
         });
+      }
+      if (db && req.user?.id) {
+        try {
+          const id = randomUUID();
+          await db().execute({
+            sql: "INSERT INTO pesquisas_diagnostico(id,usuario_id,equipamento,codigo,sintoma,resultado,criado_em) VALUES(?,?,?,?,?,?,?)",
+            args: [id, req.user.id, q.equipamento, q.codigo, q.sintoma, JSON.stringify(result), result.pesquisadoEm],
+          });
+          result.historicoId = id;
+          result.historicoSalvo = true;
+        } catch {
+          logger.warn("[diagnostico] não foi possível salvar o histórico");
+          result.historicoSalvo = false;
+        }
       }
       res.set("Cache-Control", "no-store").json(result);
     } catch (error) {
