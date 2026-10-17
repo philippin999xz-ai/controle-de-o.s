@@ -139,3 +139,30 @@ test("handles provider rate limits and does not expose provider response or keys
     },
   );
 });
+
+test("classifies provider refusals without leaking upstream text or credentials", async () => {
+  for (const [status, code, expected] of [
+    [401, "invalid_api_key", "SEARCH_PROVIDER_AUTH"],
+    [403, "access_denied", "SEARCH_PROVIDER_AUTH"],
+    [404, "model_not_found", "SEARCH_MODEL_UNAVAILABLE"],
+    [400, "invalid_request_error", "SEARCH_REQUEST_REJECTED"],
+    [503, "unavailable", "SEARCH_PROVIDER_ERROR"],
+  ]) {
+    const logs = [];
+    await withAPI({
+      apiKey: "private-key",
+      logger: { warn: (...args) => logs.push(args) },
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: { code, message: "private-key private-question upstream details" },
+      }), { status }),
+    }, async (request) => {
+      const response = await request(question);
+      assert.equal(response.status, 502);
+      const result = await response.json();
+      assert.equal(result.error.code, expected);
+      assert.equal(logs[0][1].status, status);
+      assert.equal(logs[0][1].category, expected);
+      assert.doesNotMatch(JSON.stringify([result, logs]), /private-key|private-question|upstream details/);
+    });
+  }
+});

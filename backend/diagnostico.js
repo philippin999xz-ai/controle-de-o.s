@@ -78,6 +78,7 @@ export function diagnosticRouter({
   baseURL = "https://api.groq.com/openai/v1",
   model = "openai/gpt-oss-120b",
   fetchImpl = fetch,
+  logger = console,
 }) {
   const router = express.Router();
   router.post("/", async (req, res, next) => {
@@ -122,16 +123,36 @@ export function diagnosticRouter({
           signal: AbortSignal.timeout(60000),
         },
       );
-      if (!response.ok)
-        return res.status(response.status === 429 ? 429 : 502).json({
-          error: {
-            code: "SEARCH_PROVIDER_ERROR",
-            message:
-              response.status === 429
-                ? "Limite de pesquisas atingido. Aguarde antes de tentar novamente."
-                : "Não foi possível pesquisar no provedor de IA. Solicite a verificação do serviço à administração.",
-          },
+      if (!response.ok) {
+        let upstream = {};
+        try { upstream = await response.json(); } catch {}
+        const code = String(upstream?.error?.code || "");
+        const detail = String(upstream?.error?.message || "");
+        let category = "SEARCH_PROVIDER_ERROR";
+        let message = "O provedor de pesquisa está indisponível. Tente novamente em instantes.";
+        if (response.status === 401 || response.status === 403) {
+          category = "SEARCH_PROVIDER_AUTH";
+          message = "O Groq recusou o acesso. A administração deve verificar a chave e as permissões no Render.";
+        } else if (response.status === 429) {
+          category = "SEARCH_PROVIDER_LIMIT";
+          message = "Limite de pesquisas atingido. Aguarde antes de tentar novamente.";
+        } else if (/model_not_found|model_decommissioned|model.*(?:not found|does not exist|decommissioned|not supported)/i.test(code + " " + detail)) {
+          category = "SEARCH_MODEL_UNAVAILABLE";
+          message = "O modelo de pesquisa não está disponível no Groq. A administração deve verificar DIAGNOSTICO_MODEL no Render.";
+        } else if (response.status === 400 || response.status === 422) {
+          category = "SEARCH_REQUEST_REJECTED";
+          message = "O Groq recusou a configuração da pesquisa. A administração deve conferir a compatibilidade do modelo com browser_search e os parâmetros enviados.";
+        }
+        // Nunca registre o corpo do provedor, perguntas ou credenciais.
+        logger.warn("[diagnostico] falha no provedor", {
+          status: response.status,
+          category,
+          model: /^[a-zA-Z0-9/_.-]{1,120}$/.test(model) ? model : "configurado",
         });
+        return res.status(response.status === 429 ? 429 : 502).json({
+          error: { code: category, message },
+        });
+      }
       const json = await response.json();
       const message = json?.choices?.[0]?.message;
       const result = normalizeGrounded(message);
